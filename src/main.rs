@@ -4,7 +4,7 @@ use clap::Parser;
 use std::path::PathBuf;
 use std::io::{self, Read};
 use serde::{Serialize, Deserialize};
-use formatters::{Formatter, ansi::Ansi, xml::Xml, markdown::Markdown, utf8::Utf8};
+use formatters::{Formatter, ansi::Ansi, xml::Xml, markdown::Markdown, ascii::Ascii, utf8::Utf8};
 use rayon::prelude::*;
 use anyhow::{Context, Result};
 
@@ -34,7 +34,9 @@ enum OutputFormat {
     Json,
     /// Markdown code blocks
     Markdown,
-    /// Plain UTF-8 with header
+    /// Simple ASCII header
+    Ascii,
+    /// Fancy UTF-8 box drawing
     Utf8,
 }
 
@@ -44,7 +46,8 @@ impl OutputFormat {
             OutputFormat::Ansi     => Some(Box::new(Ansi { width })),
             OutputFormat::Xml      => Some(Box::new(Xml)),
             OutputFormat::Markdown => Some(Box::new(Markdown)),
-            OutputFormat::Utf8     => Some(Box::new(Utf8)),
+            OutputFormat::Ascii    => Some(Box::new(Ascii)),
+            OutputFormat::Utf8     => Some(Box::new(Utf8 { width })),
             OutputFormat::Json     => None,
         }
     }
