@@ -6,6 +6,7 @@ use std::io::{self, Read};
 use serde::{Serialize, Deserialize};
 use formatters::{Formatter, ansi::Ansi, xml::Xml, markdown::Markdown, ascii::Ascii, utf8::Utf8};
 use rayon::prelude::*;
+use walkdir::WalkDir;
 use anyhow::{Context, Result};
 
 #[derive(Parser, Debug)]
@@ -87,9 +88,25 @@ fn main() -> Result<()> {
         return Ok(());
     }
 
+    // -------- expand directories to individual files --------
+    let mut paths = Vec::<PathBuf>::new();
+    for p in &args.files {
+        if p.is_dir() {
+            for entry in WalkDir::new(p)
+                .into_iter()
+                .filter_map(Result::ok)
+                .filter(|e| e.file_type().is_file())
+            {
+                paths.push(entry.into_path());
+            }
+        } else {
+            paths.push(p.clone());
+        }
+    }
+
     let fmt = args.format.into_formatter(args.ansi_width, args.line_numbers);
 
-    let results: Vec<_> = args.files
+    let results: Vec<_> = paths
         .par_iter()
         .map(|p| (p.clone(), read_file_content(p)))
         .collect();
