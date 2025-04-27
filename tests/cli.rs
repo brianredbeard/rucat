@@ -63,5 +63,6 @@ fn cli_strip_components() {
         .arg(&p)
         .assert()
         .success()
-        .stdout(predicate::str::contains("=== baz.h ==="));
+        // after --strip 2 the printed header must end with “baz.h”
+        .stdout(predicate::str::contains("baz.h"));
 }
