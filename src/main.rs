@@ -2,7 +2,7 @@ use clap::Parser;
 use std::path::PathBuf;
 use std::io::{self, Read};
 use serde::{Serialize, Deserialize};
-use crate::formatters::{
+use rucat::formatters::{
     Formatter, ansi::Ansi, xml::Xml, markdown::Markdown, ascii::Ascii, utf8::Utf8,
 };
 use rayon::prelude::*;
