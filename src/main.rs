@@ -1,6 +1,8 @@
 use clap::Parser;
 use std::path::PathBuf;
 use std::io::{self, Read};
+#[cfg(unix)]
+use std::os::unix::ffi::OsStrExt;
 use serde::{Serialize, Deserialize};
 use rucat::formatters::{
     Formatter, ansi::Ansi, xml::Xml, markdown::Markdown, ascii::Ascii, utf8::Utf8,
@@ -27,6 +29,10 @@ struct Args {
     /// Add a gutter with line numbers
     #[arg(short = 'n', long = "numbers")]
     line_numbers: bool,
+
+    /// Read NUL-terminated file list from STDIN (like `xargs -0`)
+    #[arg(short = '0', long = "null")]
+    null_sep: bool,
 }
 
 #[derive(clap::ValueEnum, Clone, Debug)]
@@ -68,7 +74,21 @@ struct FileEntry {
 fn main() -> Result<()> {
     let mut args = Args::parse();
 
-    if args.files.is_empty() {
+    // If the user passed -0/--null, pull a NUL-separated list of paths from stdin
+    if args.null_sep {
+        let mut bytes = Vec::new();
+        io::stdin().read_to_end(&mut bytes)?;
+        for part in bytes.split(|b| *b == 0) {
+            if part.is_empty() { continue }
+            #[cfg(unix)]
+            let pb = PathBuf::from(std::ffi::OsStr::from_bytes(part));
+            #[cfg(not(unix))]
+            let pb = PathBuf::from(String::from_utf8_lossy(part).to_string());
+            args.files.push(pb);
+        }
+    }
+
+    if args.files.is_empty() && !args.null_sep {
         let mut buf = String::new();
         io::stdin().read_to_string(&mut buf)?;
         let pseudo = PathBuf::from("-");
