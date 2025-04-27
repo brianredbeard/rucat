@@ -12,7 +12,8 @@ impl Formatter for Ascii {
         let width = if self.line_numbers { total.to_string().len() } else { 0 };
         for (idx, line) in content.lines().enumerate() {
             if self.line_numbers {
-                writeln!(w, "{:>w$} {}", idx + 1, line, w = width)?;
+                //  number | content   (ASCII separator)
+                writeln!(w, "{:>w$} | {}", idx + 1, line, w = width)?;
             } else {
                 writeln!(w, "{}", line)?;
             }

@@ -26,8 +26,9 @@ impl Formatter for Utf8 {
         let digits = if self.line_numbers { total.to_string().len() } else { 0 };
 
         for (idx, raw) in content.lines().enumerate() {
+            //  number │ content   (UTF-8 vertical bar separator inside frame)
             let mut l = if self.line_numbers {
-                format!("{:>w$} {}", idx + 1, raw, w = digits)
+                format!("{:>w$} │ {}", idx + 1, raw, w = digits)
             } else {
                 raw.to_owned()
             };

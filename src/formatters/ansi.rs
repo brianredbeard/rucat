@@ -19,8 +19,9 @@ impl Formatter for Ansi {
         let total = content.lines().count();
         let digits = if self.line_numbers { total.to_string().len() } else { 0 };
         for (idx, line) in content.lines().enumerate() {
+            //  number │ content   (graphical separator for ANSI box)
             let base = if self.line_numbers {
-                format!("{:>w$} {}", idx + 1, line, w = digits)
+                format!("{:>w$} │ {}", idx + 1, line, w = digits)
             } else {
                 line.to_owned()
             };
