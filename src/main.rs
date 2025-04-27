@@ -22,6 +22,10 @@ struct Args {
     /// Width for ANSI formatting (excluding borders)
     #[arg(long, default_value_t = 80)]
     ansi_width: usize,
+
+    /// Add a gutter with line numbers
+    #[arg(short = 'n', long = "numbers")]
+    line_numbers: bool,
 }
 
 #[derive(clap::ValueEnum, Clone, Debug)]
@@ -41,13 +45,13 @@ enum OutputFormat {
 }
 
 impl OutputFormat {
-    fn into_formatter(&self, width: usize) -> Option<Box<dyn Formatter>> {
+    fn into_formatter(&self, width: usize, ln: bool) -> Option<Box<dyn Formatter>> {
         match self {
-            OutputFormat::Ansi     => Some(Box::new(Ansi { width })),
-            OutputFormat::Xml      => Some(Box::new(Xml)),
-            OutputFormat::Markdown => Some(Box::new(Markdown)),
-            OutputFormat::Ascii    => Some(Box::new(Ascii)),
-            OutputFormat::Utf8     => Some(Box::new(Utf8 { width })),
+            OutputFormat::Ansi     => Some(Box::new(Ansi     { width,          line_numbers: ln })),
+            OutputFormat::Xml      => Some(Box::new(Xml      {                line_numbers: ln })),
+            OutputFormat::Markdown => Some(Box::new(Markdown {                line_numbers: ln })),
+            OutputFormat::Ascii    => Some(Box::new(Ascii    {                line_numbers: ln })),
+            OutputFormat::Utf8     => Some(Box::new(Utf8     { width,          line_numbers: ln })),
             OutputFormat::Json     => None,
         }
     }
@@ -69,7 +73,7 @@ fn main() -> Result<()> {
         let pseudo = PathBuf::from("-");
         args.files.push(pseudo.clone());
         // We'll use the buffer below
-        let fmt = args.format.into_formatter(args.ansi_width);
+        let fmt = args.format.into_formatter(args.ansi_width, args.line_numbers);
         if let Some(ref f) = fmt {
             f.write(&pseudo, &buf, &mut io::stdout())?;
         } else {
@@ -83,7 +87,7 @@ fn main() -> Result<()> {
         return Ok(());
     }
 
-    let fmt = args.format.into_formatter(args.ansi_width);
+    let fmt = args.format.into_formatter(args.ansi_width, args.line_numbers);
 
     let results: Vec<_> = args.files
         .par_iter()
