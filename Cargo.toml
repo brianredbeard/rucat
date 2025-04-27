@@ -12,3 +12,8 @@ serde_json = "1.0"
 rayon = "1.7"
 anyhow = "1.0"
 walkdir = "2"
+
+[dev-dependencies]
+assert_cmd = "2"         # spawn compiled binary
+predicates = { version = "3", features = ["diff"] }
+tempfile    = "3"
