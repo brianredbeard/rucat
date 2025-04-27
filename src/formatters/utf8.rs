@@ -10,33 +10,46 @@ pub struct Utf8 {
 
 impl Formatter for Utf8 {
     fn write(&self, path: &Path, content: &str, w: &mut dyn Write) -> io::Result<()> {
-        let width = self.width;
-        let hr = "─".repeat(width);
+        let digits = if self.line_numbers { content.lines().count().to_string().len() } else { 0 };
 
-        // Header line (truncate/pad as needed)
-        let mut hdr = format!(" File: {} ", path.display());
-        hdr.truncate(width);
-        if hdr.len() < width { hdr.push_str(&" ".repeat(width - hdr.len())); }
-
-        writeln!(w, "┌{}┐", hr)?;        // top border
-        writeln!(w, "│{}│", hdr)?;       // header
-        writeln!(w, "├{}┤", hr)?;        // separator
-
-        let total = content.lines().count();
-        let digits = if self.line_numbers { total.to_string().len() } else { 0 };
+        let mut body = Vec::new();
+        let mut interior = 0_usize;
 
         for (idx, raw) in content.lines().enumerate() {
-            //  number │ content   (UTF-8 vertical bar separator inside frame)
-            let mut l = if self.line_numbers {
+            let base = if self.line_numbers {
                 format!("{:>w$} │ {}", idx + 1, raw, w = digits)
             } else {
                 raw.to_owned()
             };
-            l.truncate(width);
-            if l.len() < width { l.push_str(&" ".repeat(width - l.len())); }
-            writeln!(w, "│{}│", l)?;
+            let rendered = format!(" {}", base);
+            interior = interior.max(rendered.len());
+            body.push(rendered);
         }
-        writeln!(w, "└{}┘", hr)?;        // bottom border
+
+        let header = format!(" File: {} ", path.display());
+        interior = interior.max(header.len());
+        interior = interior.max(self.width);
+
+        let hr = "─".repeat(interior);
+
+        writeln!(w, "┌{}┐", hr)?;
+        writeln!(w, "│{}│", pad(&header, interior))?;
+        writeln!(w, "├{}┤", hr)?;
+        for line in body {
+            writeln!(w, "│{}│", pad(&line, interior))?;
+        }
+        writeln!(w, "└{}┘", hr)?;
         Ok(())
+    }
+}
+
+fn pad(s: &str, width: usize) -> String {
+    if s.len() < width {
+        let mut out = String::with_capacity(width);
+        out.push_str(s);
+        out.extend(std::iter::repeat(' ').take(width - s.len()));
+        out
+    } else {
+        s.to_owned()
     }
 }
