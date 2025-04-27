@@ -3,7 +3,6 @@ use rucat::formatters::{
     markdown::Markdown, xml::Xml, Formatter,
 };
 use std::path::Path;
-use std::io::Write;
 
 fn capture<F: Formatter>(fmt: &F, content: &str) -> String {
     let mut buf = Vec::new();
