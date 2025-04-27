@@ -34,6 +34,8 @@ enum OutputFormat {
     Json,
     /// Markdown code blocks
     Markdown,
+    /// Plain UTF-8 with header
+    Utf8,
 }
 
 impl OutputFormat {
@@ -42,6 +44,7 @@ impl OutputFormat {
             OutputFormat::Ansi     => Some(Box::new(Ansi { width })),
             OutputFormat::Xml      => Some(Box::new(Xml)),
             OutputFormat::Markdown => Some(Box::new(Markdown)),
+            OutputFormat::Utf8     => Some(Box::new(Utf8)),
             OutputFormat::Json     => None,
         }
     }

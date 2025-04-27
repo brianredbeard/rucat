@@ -8,3 +8,4 @@ pub trait Formatter {
 pub mod ansi;
 pub mod xml;
 pub mod markdown;
+pub mod utf8;
