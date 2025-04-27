@@ -21,7 +21,7 @@ impl Formatter for Utf8 {
             } else {
                 raw.to_owned()
             };
-            let rendered = format!(" {}", base);
+            let rendered = base;
             interior = interior.max(rendered.len());
             body.push(rendered);
         }

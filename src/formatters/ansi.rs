@@ -18,7 +18,7 @@ impl Formatter for Ansi {
             } else {
                 line.to_owned()
             };
-            let rendered = format!(" {}", base);          // leading 1-space margin
+            let rendered = base;            // no extra leading space
             interior = interior.max(rendered.len());
             body.push(rendered);
         }
