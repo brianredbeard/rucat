@@ -174,14 +174,18 @@ fn format_json(entries: &[FileEntry]) -> Result<()> {
 }
 
 fn strip_components(p: &Path, n: usize) -> PathBuf {
-    let comps: Vec<_> = p.components().collect();
-    if n == 0 || n >= comps.len() {
-        return p.file_name()
-                .map(PathBuf::from)
-                .unwrap_or_else(|| PathBuf::from(p));
+    // split path into “normal” parts; `Path::iter()` skips the root on Unix
+    let parts: Vec<_> = p.iter().collect();
+    if parts.is_empty() {
+        return p.to_path_buf();
     }
-    comps[n..]
-        .iter()
-        .map(|c| c.as_os_str())
-        .collect::<PathBuf>()
+
+    // we always keep the file-name; strip at most (len-1) dirs *to the left* of it
+    let keep_from = if n + 1 >= parts.len() {
+        parts.len() - 1          // more strips than dirs ⇒ just filename
+    } else {
+        parts.len() - n - 1      // drop the N dirs immediately preceding the file
+    };
+
+    parts[keep_from..].iter().collect()
 }
