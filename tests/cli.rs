@@ -6,6 +6,9 @@ use tempfile::tempdir;
 
 fn prepare_file(dir: &std::path::Path, name: &str, body: &str) -> std::path::PathBuf {
     let p = dir.join(name);
+    if let Some(parent) = p.parent() {
+        std::fs::create_dir_all(parent).unwrap();   // ensure nested dirs exist
+    }
     let mut f = File::create(&p).unwrap();
     write!(f, "{}", body).unwrap();
     p

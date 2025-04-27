@@ -1,6 +1,5 @@
 use assert_cmd::Command;
 use predicates::str::contains;
-use std::io::Write;
 use tempfile::tempdir;
 
 fn prepare(dir: &std::path::Path, name: &str) -> std::path::PathBuf {
