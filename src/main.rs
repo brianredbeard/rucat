@@ -1,5 +1,5 @@
 use clap::Parser;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::io::{self, Read};
 #[cfg(unix)]
 use std::os::unix::ffi::OsStrExt;
@@ -33,6 +33,10 @@ struct Args {
     /// Read NUL-terminated file list from STDIN (like `xargs -0`)
     #[arg(short = '0', long = "null")]
     null_sep: bool,
+
+    /// Remove N leading path components when printing filenames
+    #[arg(long = "strip", default_value_t = 0)]
+    strip: usize,
 }
 
 #[derive(clap::ValueEnum, Clone, Debug)]
@@ -96,11 +100,13 @@ fn main() -> Result<()> {
         // We'll use the buffer below
         let fmt = args.format.into_formatter(args.ansi_width, args.line_numbers);
         if let Some(ref f) = fmt {
-            f.write(&pseudo, &buf, &mut io::stdout())?;
+            let disp = strip_components(&pseudo, args.strip);
+            f.write(&disp, &buf, &mut io::stdout())?;
         } else {
             let mut file_entries = Vec::new();
+            let disp = strip_components(&pseudo, args.strip);
             file_entries.push(FileEntry {
-                path: pseudo.display().to_string(),
+                path: disp.display().to_string(),
                 content: buf,
             });
             format_json(&file_entries)?;
@@ -136,11 +142,12 @@ fn main() -> Result<()> {
     for (file_path, res) in results {
         match res {
             Ok(content) => {
+                let display_path = strip_components(&file_path, args.strip);
                 if let Some(ref f) = fmt {
-                    f.write(&file_path, &content, &mut io::stdout())?;
+                    f.write(&display_path, &content, &mut io::stdout())?;
                 } else {
                     file_entries.push(FileEntry {
-                        path: file_path.display().to_string(),
+                        path: display_path.display().to_string(),
                         content,
                     });
                 }
@@ -164,4 +171,17 @@ fn read_file_content(p: &PathBuf) -> Result<String> {
 fn format_json(entries: &[FileEntry]) -> Result<()> {
     println!("{}", serde_json::to_string_pretty(entries)?);
     Ok(())
+}
+
+fn strip_components(p: &Path, n: usize) -> PathBuf {
+    let comps: Vec<_> = p.components().collect();
+    if n == 0 || n >= comps.len() {
+        return p.file_name()
+                .map(PathBuf::from)
+                .unwrap_or_else(|| PathBuf::from(p));
+    }
+    comps[n..]
+        .iter()
+        .map(|c| c.as_os_str())
+        .collect::<PathBuf>()
 }

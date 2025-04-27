@@ -51,3 +51,14 @@ fn prepare_file(dir: &std::path::Path, name: &str, body: &str) -> std::path::Pat
         .failure()
         .stderr(predicate::str::contains("error:"));
 }
+#[test]
+fn cli_strip_components() {
+    let dir = tempdir().unwrap();
+    let p = prepare_file(dir.path(), "foo/bar/baz.h", "x"); // create sub-dirs
+    Command::cargo_bin("rucat").unwrap()
+        .args(["-f", "ascii", "--strip", "2"])
+        .arg(&p)
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("=== baz.h ==="));
+}
