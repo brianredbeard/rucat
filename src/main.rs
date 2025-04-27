@@ -4,7 +4,7 @@ use clap::Parser;
 use std::path::PathBuf;
 use std::io::{self, Read};
 use serde::{Serialize, Deserialize};
-use formatters::{Formatter, ansi::Ansi, xml::Xml, markdown::Markdown};
+use formatters::{Formatter, ansi::Ansi, xml::Xml, markdown::Markdown, utf8::Utf8};
 use rayon::prelude::*;
 use anyhow::{Context, Result};
 
