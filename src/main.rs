@@ -1,14 +1,18 @@
+mod formatters;
+
 use clap::Parser;
-use std::fs;
 use std::path::PathBuf;
 use std::io::{self, Read};
 use serde::{Serialize, Deserialize};
+use formatters::{Formatter, ansi::Ansi, xml::Xml, markdown::Markdown};
+use rayon::prelude::*;
+use anyhow::{Context, Result};
 
 #[derive(Parser, Debug)]
 #[command(author, version, about, long_about = None)]
 struct Args {
     /// Files to process
-    #[arg(required = true)]
+    #[arg(value_hint = clap::ValueHint::FilePath, num_args = 0..)]
     files: Vec<PathBuf>,
 
     /// Output format
@@ -32,6 +36,17 @@ enum OutputFormat {
     Markdown,
 }
 
+impl OutputFormat {
+    fn into_formatter(&self, width: usize) -> Option<Box<dyn Formatter>> {
+        match self {
+            OutputFormat::Ansi     => Some(Box::new(Ansi { width })),
+            OutputFormat::Xml      => Some(Box::new(Xml)),
+            OutputFormat::Markdown => Some(Box::new(Markdown)),
+            OutputFormat::Json     => None,
+        }
+    }
+}
+
 // Struct for JSON output
 #[derive(Serialize, Deserialize)]
 struct FileEntry {
@@ -39,105 +54,67 @@ struct FileEntry {
     content: String,
 }
 
+fn main() -> Result<()> {
+    let mut args = Args::parse();
 
-fn main() -> io::Result<()> {
-    let args = Args::parse();
+    if args.files.is_empty() {
+        let mut buf = String::new();
+        io::stdin().read_to_string(&mut buf)?;
+        let pseudo = PathBuf::from("-");
+        args.files.push(pseudo.clone());
+        // We'll use the buffer below
+        let fmt = args.format.into_formatter(args.ansi_width);
+        if let Some(ref f) = fmt {
+            f.write(&pseudo, &buf, &mut io::stdout())?;
+        } else {
+            let mut file_entries = Vec::new();
+            file_entries.push(FileEntry {
+                path: pseudo.display().to_string(),
+                content: buf,
+            });
+            format_json(&file_entries)?;
+        }
+        return Ok(());
+    }
 
-    // Collect all file entries for JSON output
+    let fmt = args.format.into_formatter(args.ansi_width);
+
+    let results: Vec<_> = args.files
+        .par_iter()
+        .map(|p| (p.clone(), read_file_content(p)))
+        .collect();
+
     let mut file_entries = Vec::new();
 
-    for file_path in args.files {
-        match read_file_content(&file_path) {
+    for (file_path, res) in results {
+        match res {
             Ok(content) => {
-                match args.format {
-                    OutputFormat::Ansi => format_ansi(&file_path, &content, args.ansi_width),
-                    OutputFormat::Xml => format_xml(&file_path, &content),
-                    OutputFormat::Json => {
-                        // Collect for later printing as a single JSON array
-                        file_entries.push(FileEntry {
-                            path: file_path.display().to_string(),
-                            content,
-                        });
-                    },
-                    OutputFormat::Markdown => format_markdown(&file_path, &content),
+                if let Some(ref f) = fmt {
+                    f.write(&file_path, &content, &mut io::stdout())?;
+                } else {
+                    file_entries.push(FileEntry {
+                        path: file_path.display().to_string(),
+                        content,
+                    });
                 }
             }
-            Err(err) => {
-                eprintln!("Error reading file {}: {}", file_path.display(), err);
-                // Continue processing other files
-            }
+            Err(e) => eprintln!("Error reading {}: {}", file_path.display(), e),
         }
     }
 
-    // Print JSON output if requested
     if let OutputFormat::Json = args.format {
-        format_json(&file_entries)?; // Pass the vector of entries
+        format_json(&file_entries)?;
     }
 
     Ok(())
 }
 
-fn read_file_content(file_path: &PathBuf) -> io::Result<String> {
-    let mut file = fs::File::open(file_path)?;
-    let mut content = String::new();
-    file.read_to_string(&mut content)?;
-    Ok(content)
+fn read_file_content(p: &PathBuf) -> Result<String> {
+    std::fs::read_to_string(p)
+        .with_context(|| format!("Failed to read {}", p.display()))
 }
 
-// --- Formatting Functions ---
-
-fn format_ansi(file_path: &PathBuf, content: &str, width: usize) {
-    let horizontal_line = "─".repeat(width);
-    let file_info = format!(" File: {}", file_path.display());
-    // Ensure padding doesn't underflow if file_info is longer than width
-    let file_info_padding_len = width.saturating_sub(file_info.len() + 1); // +1 for the leading space
-    let file_info_padded = format!(" {}{}", file_info, " ".repeat(file_info_padding_len));
-
-    // Top border
-    println!("┬{}─", horizontal_line);
-
-    // File info line
-    println!("│{}│", file_info_padded);
-
-    // Separator
-    println!("┼{}─", horizontal_line);
-
-    // Content lines
-    for line in content.lines() {
-        // Ensure padding doesn't underflow
-        let line_padding_len = width.saturating_sub(line.len() + 1); // +1 for the leading space
-        let line_padded = format!(" {}{}", line, " ".repeat(line_padding_len));
-        println!("│{}│", line_padded);
-    }
-
-    // Bottom border
-    println!("┴{}─", horizontal_line);
-}
-
-fn format_xml(file_path: &PathBuf, content: &str) {
-    // Basic XML escaping
-    let escaped_content = content.replace("&", "&amp;")
-                                 .replace("<", "&lt;")
-                                 .replace(">", "&gt;")
-                                 .replace("\"", "&quot;")
-                                 .replace("'", "&apos;");
-    println!("<file path=\"{}\">{}</file>", file_path.display(), escaped_content);
-}
-
-// Modified format_json to take a vector and print the whole array
-fn format_json(entries: &Vec<FileEntry>) -> io::Result<()> {
-    // Use serde_json to serialize the vector of FileEntry structs
-    let json_output = serde_json::to_string_pretty(entries)?; // Use pretty for readability
-    println!("{}", json_output);
+fn format_json(entries: &[FileEntry]) -> Result<()> {
+    println!("{}", serde_json::to_string_pretty(entries)?);
     Ok(())
-}
-
-fn format_markdown(file_path: &PathBuf, content: &str) {
-    let extension = file_path.extension()
-                             .and_then(|s| s.to_str())
-                             .unwrap_or(""); // Get file extension for language hint
-
-    println!("---\nFile: {}\n---", file_path.display());
-    // Use the extension as the language hint for the code block
-    println!("```{}\n{}\n```", extension, content);
 }
