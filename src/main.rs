@@ -180,6 +180,7 @@ fn main() -> anyhow::Result<()> {
         if p.is_dir() {
             for entry in WalkDir::new(p)
                 .min_depth(1)
+                .into_iter()
                 .filter_map(Result::ok)
                 .filter(|e| e.file_type().is_file())
             {
