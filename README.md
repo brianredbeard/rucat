@@ -31,6 +31,37 @@ cargo install --path .
 
 The binary will be placed in `~/.cargo/bin`.
 
+### Cross-compiling from macOS to Linux
+
+The error `can't find crate for 'core'` when cross-compiling is a classic sign of a missing system dependency, specifically the C-language toolchain and linker for your target platform.
+
+When cross-compiling from macOS to Linux, `rustc` needs to hand off the final linking step to a linker that can create a Linux executable, as the native macOS linker cannot. You need to install a cross-compiling C toolchain and configure Cargo to use it.
+
+**This is a one-time setup for your development machine. No changes are needed for the project's code.**
+
+1.  **Install Cross-Compilation Linkers with Homebrew**
+
+    Run the following commands to install the necessary toolchains for both ARM64 and x86_64 Linux:
+
+    ```bash
+    brew install aarch64-linux-gnu
+    brew install x86_64-linux-gnu
+    ```
+
+2.  **Configure Cargo to Use the New Linkers**
+
+    You must tell Cargo where to find these linkers. Create or edit the file `~/.cargo/config.toml` (note: this is in your home directory, not your project directory) and add the following content:
+
+    ```toml
+    [target.aarch64-unknown-linux-gnu]
+    linker = "aarch64-linux-gnu-gcc"
+
+    [target.x86_64-unknown-linux-gnu]
+    linker = "x86_64-linux-gnu-gcc"
+    ```
+
+After completing these two steps, your system will be properly configured for cross-compilation.
+
 ## Usage
 
 ### Basic Usage
