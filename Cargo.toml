@@ -1,6 +1,9 @@
 [package]
 name = "rucat"
 version = "0.1.0"
+description = "A modern, feature-rich replacement for the classic `cat` utility, written in Rust."
+license = "MIT"
+readme = "README.md"
 edition = "2021"
 
 [lib]
