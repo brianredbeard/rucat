@@ -2,7 +2,7 @@
 name = "rucat"
 version = "0.1.0"
 description = "A modern, feature-rich replacement for the classic `cat` utility, written in Rust."
-license = "MIT"
+license = "GPL-3.0-or-later"
 readme = "README.md"
 edition = "2021"
 

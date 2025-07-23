@@ -88,4 +88,4 @@ Contributions are welcome! If you have a feature request, bug report, or pull re
 
 ## License
 
-This project is licensed under the MIT License.
+This project is licensed under the GNU General Public License v3.0.
