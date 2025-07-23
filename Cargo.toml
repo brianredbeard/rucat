@@ -20,6 +20,10 @@ rayon = "1.7"
 anyhow = "1.0"
 walkdir = "2"
 
+[dependencies.dirs]
+version = "5.0"
+[dependencies.toml]
+version = "0.8"
 [dev-dependencies]
 assert_cmd = "2"         # spawn compiled binary
 predicates = { version = "3", features = ["diff"] }

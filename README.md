@@ -82,6 +82,30 @@ rucat -f ascii src/formatters/ansi.rs
 rucat -f ascii --strip 2 src/formatters/ansi.rs
 ```
 
+## Configuration
+
+`rucat` can be configured with a TOML file to set your preferred default options. Create a file at `~/.config/rucat/config.toml` (or the equivalent XDG config path on your OS).
+
+Command-line arguments will always override settings from this file.
+
+**Example `config.toml`:**
+
+```toml
+# Default output format.
+# Possible values: "ansi", "utf8", "markdown", "ascii", "xml", "json"
+format = "ansi"
+
+# Default to showing line numbers.
+numbers = true
+
+# Default number of path components to strip from filenames.
+strip = 1
+
+# Default width for the "ansi" and "utf8" formatters.
+ansi_width = 120
+utf8_width = 120
+```
+
 ## Contributing
 
 Contributions are welcome! If you have a feature request, bug report, or pull request, please feel free to open an issue or submit a PR.

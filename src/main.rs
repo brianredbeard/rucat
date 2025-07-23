@@ -15,32 +15,44 @@
 //
 // Copyright (C) 2024 Brian 'redbeard' Harrington
 use clap::Parser;
+use rucat::formatters::{
+    ascii::Ascii, ansi::Ansi, markdown::Markdown, utf8::Utf8, xml::Xml, Formatter,
+};
+use serde::Deserialize;
+use std::fs;
+use std::io::{self, Read, Write};
 use std::path::{Path, PathBuf};
-use std::io::{self, Read};
 #[cfg(unix)]
 use std::os::unix::ffi::OsStrExt;
-use serde::{Serialize, Deserialize};
-use rucat::formatters::{
-    Formatter, ansi::Ansi, xml::Xml, markdown::Markdown, ascii::Ascii, utf8::Utf8,
-};
-use rayon::prelude::*;
 use walkdir::WalkDir;
-use anyhow::{Context, Result};
+
+#[derive(Deserialize, Default)]
+struct Config {
+    format: Option<OutputFormat>,
+    numbers: Option<bool>,
+    strip: Option<usize>,
+    ansi_width: Option<usize>,
+    utf8_width: Option<usize>,
+}
 
 #[derive(Parser, Debug)]
 #[command(author, version, about, long_about = None)]
 struct Args {
     /// Files to process
-    #[arg(value_hint = clap::ValueHint::FilePath, num_args = 0..)]
+    #[arg(value_hint = clap::ValueHint::FilePath)]
     files: Vec<PathBuf>,
 
     /// Output format
-    #[arg(short, long, value_enum, default_value_t = OutputFormat::Markdown)]
-    format: OutputFormat,
+    #[arg(short, long, value_enum)]
+    format: Option<OutputFormat>,
 
     /// Width for ANSI formatting (excluding borders)
-    #[arg(long, default_value_t = 80)]
-    ansi_width: usize,
+    #[arg(long)]
+    ansi_width: Option<usize>,
+
+    /// Width for UTF8 formatting (excluding borders)
+    #[arg(long)]
+    utf8_width: Option<usize>,
 
     /// Add a gutter with line numbers
     #[arg(short = 'n', long = "numbers")]
@@ -51,11 +63,12 @@ struct Args {
     null_sep: bool,
 
     /// Remove N leading path components when printing filenames
-    #[arg(long = "strip", default_value_t = 0)]
-    strip: usize,
+    #[arg(long, value_name = "N")]
+    strip: Option<usize>,
 }
 
-#[derive(clap::ValueEnum, Clone, Debug)]
+#[derive(clap::ValueEnum, Copy, Clone, Debug, PartialEq, Eq, Deserialize)]
+#[serde(rename_all = "kebab-case")]
 enum OutputFormat {
     /// ANSI box drawing characters
     Ansi,
@@ -72,27 +85,58 @@ enum OutputFormat {
 }
 
 impl OutputFormat {
-    fn into_formatter(&self, width: usize, ln: bool) -> Option<Box<dyn Formatter>> {
+    fn into_formatter(
+        &self,
+        ansi_width: usize,
+        utf8_width: usize,
+        ln: bool,
+    ) -> Option<Box<dyn Formatter>> {
         match self {
-            OutputFormat::Ansi     => Some(Box::new(Ansi     { width,          line_numbers: ln })),
-            OutputFormat::Xml      => Some(Box::new(Xml      {                line_numbers: ln })),
-            OutputFormat::Markdown => Some(Box::new(Markdown {                line_numbers: ln })),
-            OutputFormat::Ascii    => Some(Box::new(Ascii    {                line_numbers: ln })),
-            OutputFormat::Utf8     => Some(Box::new(Utf8     { width,          line_numbers: ln })),
-            OutputFormat::Json     => None,
+            OutputFormat::Ansi => Some(Box::new(Ansi {
+                width: ansi_width,
+                line_numbers: ln,
+            })),
+            OutputFormat::Xml => Some(Box::new(Xml { line_numbers: ln })),
+            OutputFormat::Markdown => Some(Box::new(Markdown { line_numbers: ln })),
+            OutputFormat::Ascii => Some(Box::new(Ascii { line_numbers: ln })),
+            OutputFormat::Utf8 => Some(Box::new(Utf8 {
+                width: utf8_width,
+                line_numbers: ln,
+            })),
+            OutputFormat::Json => None,
         }
     }
 }
 
+fn load_config() -> Config {
+    if let Some(mut path) = dirs::config_dir() {
+        path.push("rucat");
+        path.push("config.toml");
+        if path.exists() {
+            let content = fs::read_to_string(path).unwrap_or_default();
+            return toml::from_str(&content).unwrap_or_default();
+        }
+    }
+    Config::default()
+}
+
 // Struct for JSON output
-#[derive(Serialize, Deserialize)]
+#[derive(serde::Serialize)]
 struct FileEntry {
     path: String,
     content: String,
 }
 
-fn main() -> Result<()> {
+fn main() -> anyhow::Result<()> {
     let mut args = Args::parse();
+    let config = load_config();
+
+    // Merge settings: CLI > Config File > Default
+    let format = args.format.or(config.format).unwrap_or(OutputFormat::Markdown);
+    let line_numbers = args.line_numbers || config.numbers.unwrap_or(false);
+    let strip = args.strip.or(config.strip).unwrap_or(0);
+    let ansi_width = args.ansi_width.or(config.ansi_width).unwrap_or(80);
+    let utf8_width = args.utf8_width.or(config.utf8_width).unwrap_or(80);
 
     // If the user passed -0/--null, pull a NUL-separated list of paths from stdin
     if args.null_sep {
@@ -108,24 +152,24 @@ fn main() -> Result<()> {
         }
     }
 
+    // If no files are specified, read from stdin
     if args.files.is_empty() && !args.null_sep {
         let mut buf = String::new();
         io::stdin().read_to_string(&mut buf)?;
         let pseudo = PathBuf::from("-");
         args.files.push(pseudo.clone());
-        // We'll use the buffer below
-        let fmt = args.format.into_formatter(args.ansi_width, args.line_numbers);
+        let fmt = format.into_formatter(ansi_width, utf8_width, line_numbers);
         if let Some(ref f) = fmt {
-            let disp = strip_components(&pseudo, args.strip);
+            let disp = strip_components(&pseudo, strip);
             f.write(&disp, &buf, &mut io::stdout())?;
         } else {
             let mut file_entries = Vec::new();
-            let disp = strip_components(&pseudo, args.strip);
+            let disp = strip_components(&pseudo, strip);
             file_entries.push(FileEntry {
                 path: disp.display().to_string(),
                 content: buf,
             });
-            format_json(&file_entries)?;
+            return format_json(&file_entries);
         }
         return Ok(());
     }
@@ -135,7 +179,7 @@ fn main() -> Result<()> {
     for p in &args.files {
         if p.is_dir() {
             for entry in WalkDir::new(p)
-                .into_iter()
+                .min_depth(1)
                 .filter_map(Result::ok)
                 .filter(|e| e.file_type().is_file())
             {
@@ -146,57 +190,49 @@ fn main() -> Result<()> {
         }
     }
 
-    let fmt = args.format.into_formatter(args.ansi_width, args.line_numbers);
-
-    let results: Vec<_> = paths
-        .par_iter()
-        .map(|p| (p.clone(), read_file_content(p)))
-        .collect();
-
-    let mut file_entries = Vec::new();
-
-    for (file_path, res) in results {
-        match res {
-            Ok(content) => {
-                let display_path = strip_components(&file_path, args.strip);
-                if let Some(ref f) = fmt {
-                    f.write(&display_path, &content, &mut io::stdout())?;
-                } else {
-                    file_entries.push(FileEntry {
-                        path: display_path.display().to_string(),
-                        content,
-                    });
+    let fmt = format.into_formatter(ansi_width, utf8_width, line_numbers);
+    if let OutputFormat::Json = format {
+        let entries: Vec<FileEntry> = paths
+            .iter()
+            .filter_map(|p| read_file_content(p).ok().map(|c| (p, c)))
+            .map(|(p, content)| {
+                let display_path = strip_components(p, strip);
+                FileEntry { path: display_path.display().to_string(), content }
+            })
+            .collect();
+        return format_json(&entries);
+    } else {
+        for p in paths {
+            match read_file_content(&p) {
+                Ok(content) => {
+                    let display_path = strip_components(&p, strip);
+                    if let Some(ref f) = fmt {
+                        f.write(&display_path, &content, &mut io::stdout())?;
+                    }
                 }
+                Err(e) => writeln!(io::stderr(), "Error reading {}: {}", p.display(), e)?,
             }
-            Err(e) => eprintln!("Error reading {}: {}", file_path.display(), e),
         }
     }
-
-    if let OutputFormat::Json = args.format {
-        format_json(&file_entries)?;
-    }
-
     Ok(())
 }
 
-fn read_file_content(p: &PathBuf) -> Result<String> {
-    std::fs::read_to_string(p)
-        .with_context(|| format!("Failed to read {}", p.display()))
+fn read_file_content(p: &PathBuf) -> anyhow::Result<String> {
+    std::fs::read_to_string(p).map_err(anyhow::Error::from)
 }
 
-fn format_json(entries: &[FileEntry]) -> Result<()> {
-    println!("{}", serde_json::to_string_pretty(entries)?);
+fn format_json(entries: &[FileEntry]) -> anyhow::Result<()> {
+    writeln!(io::stdout(), "{}", serde_json::to_string_pretty(entries)?)?;
     Ok(())
 }
 
 fn strip_components(p: &Path, n: usize) -> PathBuf {
-    // collect all normal components (root is excluded on Unix)
     let parts: Vec<_> = p.iter().collect();
     if parts.is_empty() {
         return p.to_path_buf();
     }
 
-    // we must keep at least the filename → trim at most len-1 components
-    let start = std::cmp::min(n, parts.len() - 1);
+    // we must keep at least the filename
+    let start = if parts.len() > 1 { std::cmp::min(n, parts.len() - 1) } else { 0 };
     parts[start..].iter().collect()
 }
