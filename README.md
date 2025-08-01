@@ -1,29 +1,43 @@
 # `rucat` - A versatile `cat` clone
 
-`rucat` is a modern, feature-rich replacement for the classic `cat` utility, written in Rust. It goes beyond simple file concatenation, offering multiple output formats, line numbering, and syntax-aware formatting, making it an ideal tool for developers, system administrators, and anyone working with code or text files in the terminal.
+![rucat image](/.assets/rucat.png)
+
+`rucat` is a modern, feature-rich replacement for the classic `cat` utility,
+written in Rust. It goes beyond simple file concatenation, offering multiple
+output formats, line numbering, and syntax-aware formatting, making it an ideal
+tool for developers, system administrators, and anyone working with code or text
+files in the terminal.
 
 ## Features
 
--   **Multiple Output Formats**: Display content in various styles, including:
-    -   `ansi`: Nicely formatted with borders (width-configurable via `--ansi-width`).
-    -   `utf8`: Fancy UTF-8 box-drawing borders (width-configurable via `--ansi-width`).
-    -   `markdown`: GitHub-flavored Markdown code blocks, with automatic language detection from the file extension.
-    -   `ascii`: Simple `=== file.txt ===` headers for easy separation.
-    -   `xml`: Structured XML output with file and line metadata.
-    -   `json`: A clean JSON array of file entries, perfect for scripting and programmatic use.
--   **Line Numbering**: Prepend line numbers to every line with the `-n` or `--numbers` flag.
--   **Flexible Input**:
-    -   Process multiple files and directories.
-    -   Read from `stdin`, allowing it to be used in shell pipelines.
-    -   Handle NUL-terminated file lists from commands like `find ... -print0` using the `-0` or `--null` flag.
--   **Path Manipulation**: Use `--strip N` to remove leading path components from file headers, cleaning up output for nested projects.
--   **Robust and Fast**: Built with Rust for performance and memory safety.
+- **Multiple Output Formats**: Display content in various styles, including:
+  - `ansi`: Nicely formatted with borders (width-configurable via
+    `--ansi-width`).
+  - `utf8`: Fancy UTF-8 box-drawing borders (width-configurable via
+    `--ansi-width`).
+  - `markdown`: GitHub-flavored Markdown code blocks, with automatic language
+    detection from the file extension.
+  - `ascii`: Simple `=== file.txt ===` headers for easy separation.
+  - `xml`: Structured XML output with file and line metadata.
+  - `json`: A clean JSON array of file entries, perfect for scripting and
+    programmatic use.
+- **Line Numbering**: Prepend line numbers to every line with the `-n` or
+  `--numbers` flag.
+- **Flexible Input**:
+  - Process multiple files and directories.
+  - Read from `stdin`, allowing it to be used in shell pipelines.
+  - Handle NUL-terminated file lists from commands like `find ... -print0` using
+    the `-0` or `--null` flag.
+- **Path Manipulation**: Use `--strip N` to remove leading path components from
+  file headers, cleaning up output for nested projects.
+- **Robust and Fast**: Built with Rust for performance and memory safety.
 
 ## Installation
 
 ### From source with Cargo
 
-If you have the Rust toolchain installed, you can build and install `rucat` directly from source. From the root of the project repository:
+If you have the Rust toolchain installed, you can build and install `rucat`
+directly from source. From the root of the project repository:
 
 ```bash
 cargo install --path .
@@ -33,33 +47,41 @@ The binary will be placed in `~/.cargo/bin`.
 
 ### Cross-compiling from macOS to Linux
 
-When cross-compiling from macOS to Linux, `rustc` needs a C-language toolchain that can link executables for the Linux target. The native macOS toolchain cannot do this. You can install the necessary toolchains using Homebrew, but it requires adding a new formula tap first.
+When cross-compiling from macOS to Linux, `rustc` needs a C-language toolchain
+that can link executables for the Linux target. The native macOS toolchain
+cannot do this. You can install the necessary toolchains using Homebrew, but it
+requires adding a new formula tap first.
 
-**This is a one-time setup for your development machine. No changes are needed for the project's code.**
+**This is a one-time setup for your development machine. No changes are needed
+for the project's code.**
 
-1.  **Install Cross-Compilation Toolchains with Homebrew**
+1. **Install Cross-Compilation Toolchains with Homebrew**
 
-    First, tap the repository that contains the toolchains. Then, install them.
+   First, tap the repository that contains the toolchains. Then, install them.
 
-    ```bash
-    brew tap messense/macos-cross-toolchains
-    brew install aarch64-unknown-linux-gnu
-    brew install x86_64-unknown-linux-gnu
-    ```
+   ```bash
+   brew tap messense/macos-cross-toolchains
+   brew install aarch64-unknown-linux-gnu
+   brew install x86_64-unknown-linux-gnu
+   ```
 
-2.  **Configure Cargo to Use the New Linkers**
+1. **Configure Cargo to Use the New Linkers**
 
-    You must tell Cargo to use these newly installed linkers for the respective targets. Create or edit the file `~/.cargo/config.toml` (this is Cargo's global configuration file in your home directory, not your project directory) and add the following content:
+   You must tell Cargo to use these newly installed linkers for the respective
+   targets. Create or edit the file `~/.cargo/config.toml` (this is Cargo's
+   global configuration file in your home directory, not your project directory)
+   and add the following content:
 
-    ```toml
-    [target.aarch64-unknown-linux-gnu]
-    linker = "aarch64-unknown-linux-gnu-gcc"
+   ```toml
+   [target.aarch64-unknown-linux-gnu]
+   linker = "aarch64-unknown-linux-gnu-gcc"
 
-    [target.x86_64-unknown-linux-gnu]
-    linker = "x86_64-unknown-linux-gnu-gcc"
-    ```
+   [target.x86_64-unknown-linux-gnu]
+   linker = "x86_64-unknown-linux-gnu-gcc"
+   ```
 
-After completing these two steps, your system will be properly configured for cross-compilation, and `make cross-build-all` should succeed.
+After completing these two steps, your system will be properly configured for
+cross-compilation, and `make cross-build-all` should succeed.
 
 ## Usage
 
@@ -78,7 +100,8 @@ ls -1 src/formatters | rucat
 
 ### Formatting Options
 
-`rucat` defaults to the `markdown` format. Use the `-f` or `--format` flag to change it.
+`rucat` defaults to the `markdown` format. Use the `-f` or `--format` flag to
+change it.
 
 ```bash
 # Use the ANSI formatter with a width of 80 columns and line numbers
@@ -93,7 +116,8 @@ rucat -f json src/main.rs > output.json
 
 ### Advanced Input
 
-`rucat` can process a NUL-separated list of files from standard input, which is safer and more robust than using `xargs`. This is especially useful with `find`.
+`rucat` can process a NUL-separated list of files from standard input, which is
+safer and more robust than using `xargs`. This is especially useful with `find`.
 
 ```bash
 # Find all Rust files and display them using the markdown format
@@ -102,7 +126,8 @@ find src -name "*.rs" -print0 | rucat -0 -f markdown
 
 ### Path Stripping
 
-When working with deep directory structures, the full file path can be noisy. Use `--strip` to shorten the paths in the output headers.
+When working with deep directory structures, the full file path can be noisy.
+Use `--strip` to shorten the paths in the output headers.
 
 ```bash
 # Before stripping: === src/formatters/ansi.rs ===
@@ -114,7 +139,9 @@ rucat -f ascii --strip 2 src/formatters/ansi.rs
 
 ## Configuration
 
-`rucat` can be configured with a TOML file to set your preferred default options. Create a file at `~/.config/rucat/config.toml` (or the equivalent XDG config path on your OS).
+`rucat` can be configured with a TOML file to set your preferred default
+options. Create a file at `~/.config/rucat/config.toml` (or the equivalent XDG
+config path on your OS).
 
 Command-line arguments will always override settings from this file.
 
@@ -138,7 +165,8 @@ utf8_width = 120
 
 ## Contributing
 
-Contributions are welcome! If you have a feature request, bug report, or pull request, please feel free to open an issue or submit a PR.
+Contributions are welcome! If you have a feature request, bug report, or pull
+request, please feel free to open an issue or submit a PR.
 
 ## License
 
