@@ -15,15 +15,14 @@
 //
 // Copyright (C) 2024 Brian 'redbeard' Harrington
 use clap::Parser;
-use rucat::formatters::{
-    ascii::Ascii, ansi::Ansi, markdown::Markdown, utf8::Utf8, xml::Xml, Formatter,
-};
+use rucat::cli::{Args, OutputFormat};
 use serde::Deserialize;
+use clap::Parser;
 use std::fs;
 use std::io::{self, Read, Write};
-use std::path::{Path, PathBuf};
 #[cfg(unix)]
 use std::os::unix::ffi::OsStrExt;
+use std::path::{Path, PathBuf};
 use walkdir::WalkDir;
 
 #[derive(Deserialize, Default)]
@@ -33,79 +32,7 @@ struct Config {
     strip: Option<usize>,
     ansi_width: Option<usize>,
     utf8_width: Option<usize>,
-}
-
-#[derive(Parser, Debug)]
-#[command(author, version, about, long_about = None)]
-struct Args {
-    /// Files to process
-    #[arg(value_hint = clap::ValueHint::FilePath)]
-    files: Vec<PathBuf>,
-
-    /// Output format
-    #[arg(short, long, value_enum)]
-    format: Option<OutputFormat>,
-
-    /// Width for ANSI formatting (excluding borders)
-    #[arg(long)]
-    ansi_width: Option<usize>,
-
-    /// Width for UTF8 formatting (excluding borders)
-    #[arg(long)]
-    utf8_width: Option<usize>,
-
-    /// Add a gutter with line numbers
-    #[arg(short = 'n', long = "numbers")]
-    line_numbers: bool,
-
-    /// Read NUL-terminated file list from STDIN (like `xargs -0`)
-    #[arg(short = '0', long = "null")]
-    null_sep: bool,
-
-    /// Remove N leading path components when printing filenames
-    #[arg(long, value_name = "N")]
-    strip: Option<usize>,
-}
-
-#[derive(clap::ValueEnum, Copy, Clone, Debug, PartialEq, Eq, Deserialize)]
-#[serde(rename_all = "kebab-case")]
-enum OutputFormat {
-    /// ANSI box drawing characters
-    Ansi,
-    /// XML format
-    Xml,
-    /// JSON format
-    Json,
-    /// Markdown code blocks
-    Markdown,
-    /// Simple ASCII header
-    Ascii,
-    /// Fancy UTF-8 box drawing
-    Utf8,
-}
-
-impl OutputFormat {
-    fn into_formatter(
-        &self,
-        ansi_width: usize,
-        utf8_width: usize,
-        ln: bool,
-    ) -> Option<Box<dyn Formatter>> {
-        match self {
-            OutputFormat::Ansi => Some(Box::new(Ansi {
-                width: ansi_width,
-                line_numbers: ln,
-            })),
-            OutputFormat::Xml => Some(Box::new(Xml { line_numbers: ln })),
-            OutputFormat::Markdown => Some(Box::new(Markdown { line_numbers: ln })),
-            OutputFormat::Ascii => Some(Box::new(Ascii { line_numbers: ln })),
-            OutputFormat::Utf8 => Some(Box::new(Utf8 {
-                width: utf8_width,
-                line_numbers: ln,
-            })),
-            OutputFormat::Json => None,
-        }
-    }
+    pretty_syntax: Option<String>,
 }
 
 fn load_config() -> Config {
@@ -132,18 +59,24 @@ fn main() -> anyhow::Result<()> {
     let config = load_config();
 
     // Merge settings: CLI > Config File > Default
-    let format = args.format.or(config.format).unwrap_or(OutputFormat::Markdown);
+    let format = args
+        .format
+        .or(config.format)
+        .unwrap_or(OutputFormat::Markdown);
     let line_numbers = args.line_numbers || config.numbers.unwrap_or(false);
     let strip = args.strip.or(config.strip).unwrap_or(0);
     let ansi_width = args.ansi_width.or(config.ansi_width).unwrap_or(80);
     let utf8_width = args.utf8_width.or(config.utf8_width).unwrap_or(80);
+    let pretty_syntax = args.pretty_syntax.or(config.pretty_syntax);
 
     // If the user passed -0/--null, pull a NUL-separated list of paths from stdin
     if args.null_sep {
         let mut bytes = Vec::new();
         io::stdin().read_to_end(&mut bytes)?;
         for part in bytes.split(|b| *b == 0) {
-            if part.is_empty() { continue }
+            if part.is_empty() {
+                continue;
+            }
             #[cfg(unix)]
             let pb = PathBuf::from(std::ffi::OsStr::from_bytes(part));
             #[cfg(not(unix))]
@@ -158,7 +91,12 @@ fn main() -> anyhow::Result<()> {
         io::stdin().read_to_string(&mut buf)?;
         let pseudo = PathBuf::from("-");
         args.files.push(pseudo.clone());
-        let fmt = format.into_formatter(ansi_width, utf8_width, line_numbers);
+        let fmt = format.into_formatter(
+            ansi_width,
+            utf8_width,
+            line_numbers,
+            pretty_syntax.as_deref(),
+        );
         if let Some(ref f) = fmt {
             let disp = strip_components(&pseudo, strip);
             f.write(&disp, &buf, &mut io::stdout())?;
@@ -171,47 +109,54 @@ fn main() -> anyhow::Result<()> {
             });
             return format_json(&file_entries);
         }
-        return Ok(());
-    }
-
-    // -------- expand directories to individual files --------
-    let mut paths = Vec::<PathBuf>::new();
-    for p in &args.files {
-        if p.is_dir() {
-            for entry in WalkDir::new(p)
-                .min_depth(1)
-                .into_iter()
-                .filter_map(Result::ok)
-                .filter(|e| e.file_type().is_file())
-            {
-                paths.push(entry.into_path());
-            }
-        } else {
-            paths.push(p.clone());
-        }
-    }
-
-    let fmt = format.into_formatter(ansi_width, utf8_width, line_numbers);
-    if let OutputFormat::Json = format {
-        let entries: Vec<FileEntry> = paths
-            .iter()
-            .filter_map(|p| read_file_content(p).ok().map(|c| (p, c)))
-            .map(|(p, content)| {
-                let display_path = strip_components(p, strip);
-                FileEntry { path: display_path.display().to_string(), content }
-            })
-            .collect();
-        return format_json(&entries);
     } else {
-        for p in paths {
-            match read_file_content(&p) {
-                Ok(content) => {
-                    let display_path = strip_components(&p, strip);
-                    if let Some(ref f) = fmt {
-                        f.write(&display_path, &content, &mut io::stdout())?;
-                    }
+        // -------- expand directories to individual files --------
+        let mut paths = Vec::<PathBuf>::new();
+        for p in &args.files {
+            if p.is_dir() {
+                for entry in WalkDir::new(p)
+                    .min_depth(1)
+                    .into_iter()
+                    .filter_map(Result::ok)
+                    .filter(|e| e.file_type().is_file())
+                {
+                    paths.push(entry.into_path());
                 }
-                Err(e) => writeln!(io::stderr(), "Error reading {}: {}", p.display(), e)?,
+            } else {
+                paths.push(p.clone());
+            }
+        }
+
+        let fmt = format.into_formatter(
+            ansi_width,
+            utf8_width,
+            line_numbers,
+            pretty_syntax.as_deref(),
+        );
+        if let OutputFormat::Json = format {
+            let entries: Vec<FileEntry> = paths
+                .iter()
+                .filter_map(|p| read_file_content(p).ok().map(|c| (p, c)))
+                .map(|(p, content)| {
+                    let display_path = strip_components(p, strip);
+                    FileEntry {
+                        path: display_path.display().to_string(),
+                        content,
+                    }
+                })
+                .collect();
+            format_json(&entries)?;
+        } else {
+            for p in paths {
+                match read_file_content(&p) {
+                    Ok(content) => {
+                        let display_path = strip_components(&p, strip);
+                        if let Some(ref f) = fmt {
+                            f.write(&display_path, &content, &mut io::stdout())?;
+                        }
+                    }
+                    Err(e) => writeln!(io::stderr(), "Error reading {}: {}", p.display(), e)?,
+                }
             }
         }
     }
@@ -234,6 +179,10 @@ fn strip_components(p: &Path, n: usize) -> PathBuf {
     }
 
     // we must keep at least the filename
-    let start = if parts.len() > 1 { std::cmp::min(n, parts.len() - 1) } else { 0 };
+    let start = if parts.len() > 1 {
+        std::cmp::min(n, parts.len() - 1)
+    } else {
+        0
+    };
     parts[start..].iter().collect()
 }

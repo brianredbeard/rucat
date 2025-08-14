@@ -18,12 +18,19 @@ use super::Formatter;
 use std::io::{self, Write};
 use std::path::Path;
 
-pub struct Ansi { pub width: usize, pub line_numbers: bool }
+pub struct Ansi {
+    pub width: usize,
+    pub line_numbers: bool,
+}
 
 impl Formatter for Ansi {
     fn write(&self, path: &Path, content: &str, w: &mut dyn Write) -> io::Result<()> {
         // ---------- collect body lines & determine interior width ----------
-        let digits = if self.line_numbers { content.lines().count().to_string().len() } else { 0 };
+        let digits = if self.line_numbers {
+            content.lines().count().to_string().len()
+        } else {
+            0
+        };
 
         let mut body = Vec::new();
         let mut interior = 0_usize;
@@ -34,14 +41,14 @@ impl Formatter for Ansi {
             } else {
                 line.to_owned()
             };
-            let rendered = base;            // no extra leading space
+            let rendered = base; // no extra leading space
             interior = interior.max(rendered.len());
             body.push(rendered);
         }
 
         let header = format!(" File: {}", path.display());
         interior = interior.max(header.len());
-        interior = interior.max(self.width);              // honour minimum width
+        interior = interior.max(self.width); // honour minimum width
 
         let hr = "─".repeat(interior);
 

@@ -21,6 +21,9 @@ files in the terminal.
   - `xml`: Structured XML output with file and line metadata.
   - `json`: A clean JSON array of file entries, perfect for scripting and
     programmatic use.
+  - `pretty`: Syntax highlighting for a wide range of languages. Syntax is
+    chosen based on: 1) the `--pretty-syntax` flag, 2) a Vim modeline in the
+    file (e.g., `vim: ft=rust`), or 3) the file extension.
 - **Line Numbering**: Prepend line numbers to every line with the `-n` or
   `--numbers` flag.
 - **Flexible Input**:
@@ -30,6 +33,11 @@ files in the terminal.
     the `-0` or `--null` flag.
 - **Path Manipulation**: Use `--strip N` to remove leading path components from
   file headers, cleaning up output for nested projects.
+- **Packaging**:
+  - Built-in support for generating `.deb` packages for Debian/Ubuntu systems
+    via `cargo deb`.
+  - Built-in support for generating `.rpm` packages for Fedora/RHEL/CentOS
+    systems via `cargo rpm`.
 - **Robust and Fast**: Built with Rust for performance and memory safety.
 
 ## Installation
@@ -41,6 +49,26 @@ directly from source. From the root of the project repository:
 
 ```bash
 cargo install --path .
+```
+
+### Building Packages
+
+This project is configured to build `.deb` and `.rpm` packages using standard
+Cargo tooling. First, ensure you have the necessary packaging subcommands
+installed:
+
+```bash
+cargo install cargo-deb cargo-rpm
+```
+
+Then, you can build the packages from the project root:
+
+```bash
+# Build .deb package (output in target/debian/)
+cargo deb
+
+# Build .rpm package (output in target/release/rpmbuild/RPMs/)
+cargo rpm build
 ```
 
 The binary will be placed in `~/.cargo/bin`.
@@ -112,6 +140,12 @@ rucat -f ascii src/main.rs
 
 # Get JSON output for scripting
 rucat -f json src/main.rs > output.json
+
+# Use the pretty-printer with syntax highlighting
+rucat -f pretty src/main.rs
+
+# Force a specific syntax for the pretty-printer
+rucat -f pretty --pretty-syntax sh < 'my-script-without-extension'
 ```
 
 ### Advanced Input
@@ -149,7 +183,8 @@ Command-line arguments will always override settings from this file.
 
 ```toml
 # Default output format.
-# Possible values: "ansi", "utf8", "markdown", "ascii", "xml", "json"
+# Possible values: "ansi", "utf8", "markdown", "ascii", "xml", "json",
+# "pretty"
 format = "ansi"
 
 # Default to showing line numbers.
@@ -161,12 +196,17 @@ strip = 1
 # Default width for the "ansi" and "utf8" formatters.
 ansi_width = 120
 utf8_width = 120
+
+# Default syntax for the "pretty" formatter.
+pretty_syntax = "rust"
 ```
 
 ## Contributing
 
 Contributions are welcome! If you have a feature request, bug report, or pull
 request, please feel free to open an issue or submit a PR.
+
+This tool was proudly co-written using [Aider](https://github.com/Aider-AI/aider)
 
 ## License
 

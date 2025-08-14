@@ -16,14 +16,19 @@
 // Copyright (C) 2024 Brian 'redbeard' Harrington
 use rucat::formatters::{
     ascii::Ascii, ansi::Ansi, utf8::Utf8,
-    markdown::Markdown, xml::Xml, Formatter,
+    markdown::Markdown, xml::Xml, pretty::Pretty, Formatter,
 };
 use std::path::Path;
 
-fn capture<F: Formatter>(fmt: &F, content: &str) -> String {
+fn capture_with_path<F: Formatter>(fmt: &F, path: &Path, content: &str) -> String {
     let mut buf = Vec::new();
-    fmt.write(Path::new("foo.rs"), content, &mut buf).unwrap();
+    fmt.write(path, content, &mut buf).unwrap();
     String::from_utf8(buf).unwrap()
+}
+
+// Convenience wrapper for old tests that don't care about the path.
+fn capture<F: Formatter>(fmt: &F, content: &str) -> String {
+    capture_with_path(fmt, Path::new("foo.rs"), content)
 }
 
 #[test] fn ascii_numbers() {
@@ -59,4 +64,40 @@ fn capture<F: Formatter>(fmt: &F, content: &str) -> String {
     let no   = capture(&Xml { line_numbers: false }, "a\nb");
     assert!(with.contains("<line no=\"1\">"));
     assert!(!no.contains("<line no=\"1\">"));
+}
+
+#[test] fn pretty_highlighting() {
+    let out = capture(&Pretty { line_numbers: true, syntax_override: None }, "fn main() {}");
+    assert!(out.contains("1 │"));          // line number
+    assert!(out.contains("\x1b["));        // ansi escape code
+}
+
+#[test]
+fn pretty_syntax_override() {
+    // The content "key = 'value'" should be highlighted as TOML, despite the .rs extension.
+    let fmt = Pretty { line_numbers: false, syntax_override: Some("toml".to_string()) };
+    let out = capture_with_path(&fmt, Path::new("foo.rs"), "key = 'value'");
+
+    // For comparison, highlight as plain text (by giving an unknown extension and no override).
+    let fmt_plain = Pretty { line_numbers: false, syntax_override: None };
+    let out_plain = capture_with_path(&fmt_plain, Path::new("foo.txt"), "key = 'value'");
+
+    assert!(out.contains("\x1b[")); // Should be highlighted.
+    assert_ne!(out, out_plain);     // And should be different from plain text.
+    assert_ne!(out, "key = 'value'\n");
+}
+
+#[test]
+fn pretty_modeline_detection() {
+    let content = "fn main() {}\n// vim: ft=rust";
+    let fmt = Pretty { line_numbers: false, syntax_override: None };
+
+    // Use a .txt extension to prove modeline is being used over the file extension.
+    let out = capture_with_path(&fmt, Path::new("foo.txt"), content);
+
+    // For comparison, format the same content without the modeline.
+    let out_plain = capture_with_path(&fmt, Path::new("foo.txt"), "fn main() {}");
+
+    assert!(out.contains("\x1b[")); // Should be highlighted as rust.
+    assert_ne!(out, out_plain);     // Should be different from plain text version.
 }

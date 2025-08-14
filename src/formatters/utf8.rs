@@ -26,7 +26,11 @@ pub struct Utf8 {
 
 impl Formatter for Utf8 {
     fn write(&self, path: &Path, content: &str, w: &mut dyn Write) -> io::Result<()> {
-        let digits = if self.line_numbers { content.lines().count().to_string().len() } else { 0 };
+        let digits = if self.line_numbers {
+            content.lines().count().to_string().len()
+        } else {
+            0
+        };
 
         let mut body = Vec::new();
         let mut interior = 0_usize;

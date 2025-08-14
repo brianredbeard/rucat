@@ -22,7 +22,8 @@ pub trait Formatter {
 }
 
 pub mod ansi;
-pub mod xml;
+pub mod ascii; // simple “===” header
 pub mod markdown;
-pub mod ascii;   // simple “===” header
-pub mod utf8;    // fancy UTF-8 borders
+pub mod pretty;
+pub mod utf8; // fancy UTF-8 borders
+pub mod xml;
