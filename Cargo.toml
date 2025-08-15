@@ -1,16 +1,40 @@
 [package]
 name = "rucat"
-version = "0.1.0"
+version = "0.2.0"
+authors = ["Brian 'redbeard' Harrington <redbeard@dead-city.org>"]
+edition = "2024"
 description = "A modern, feature-rich replacement for the classic `cat` utility, written in Rust."
-license = "GPL-3.0-or-later"
 readme = "README.md"
-edition = "2021"
+repository = "https://github.com/brianredbeard/rucat"
+license = "GPL-3.0-or-later"
+license-file = "LICENSE"
+
+[package.metadata.deb]
+maintainer = "Brian 'redbeard' Harrington <redbeard@dead-city.org>"
+copyright = "2024, Brian 'redbeard' Harrington <redbeard@dead-city.org>"
+license-file = ["LICENSE", "4"]
+changelog = "CHANGELOG.md"
+depends = "$auto"
+section = "utils"
+priority = "optional"
+assets = [
+    ["target/release/rucat", "usr/bin/", "755"],
+    ["assets/man/rucat.1", "usr/share/man/man1/", "644"],
+    ["assets/completions/bash/rucat", "usr/share/bash-completion/completions/", "644"],
+    ["assets/completions/zsh/_rucat", "usr/share/zsh/site-functions/", "644"],
+    ["assets/completions/fish/rucat.fish", "usr/share/fish/vendor_completions.d/", "644"],
+    ["README.md", "usr/share/doc/rucat/", "644"],
+]
 
 [lib]
 name = "rucat"
 path = "src/lib.rs"
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+[features]
+default = []
+basic = []
+full = []
 
 [dependencies]
 clap = { version = "4.5", features = ["derive"] }
@@ -37,20 +61,3 @@ clap = { version = "4.5", features = ["derive"] }
 serde = { version = "1.0", features = ["derive"] }
 clap_complete = "4.5"
 clap_mangen = "0.2.29"
-
-[package.metadata.deb]
-maintainer = "Brian 'redbeard' Harrington <redbeard@dead-city.org>"
-copyright = "2025, Brian 'redbeard' Harrington <redbeard@dead-city.org>"
-license-file = ["LICENSE", "4"]
-changelog = "CHANGELOG.md"
-depends = "$auto"
-section = "utils"
-priority = "optional"
-assets = [
-    ["target/release/rucat", "usr/bin/", "755"],
-    ["assets/man/rucat.1", "usr/share/man/man1/", "644"],
-    ["assets/completions/bash/rucat", "usr/share/bash-completion/completions/", "644"],
-    ["assets/completions/zsh/_rucat", "usr/share/zsh/site-functions/", "644"],
-    ["assets/completions/fish/rucat.fish", "usr/share/fish/vendor_completions.d/", "644"],
-    ["README.md", "usr/share/doc/rucat/", "644"],
-]

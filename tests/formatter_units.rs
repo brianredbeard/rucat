@@ -15,7 +15,7 @@
 //
 // Copyright (C) 2024 Brian 'redbeard' Harrington
 use rucat::formatters::{
-    ansi::Ansi, ascii::Ascii, markdown::Markdown, pretty::Pretty, utf8::Utf8, xml::Xml, Formatter,
+    Formatter, ansi::Ansi, ascii::Ascii, markdown::Markdown, pretty::Pretty, utf8::Utf8, xml::Xml,
 };
 use std::path::Path;
 

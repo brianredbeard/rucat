@@ -14,7 +14,7 @@
 // along with rucat.  If not, see <https://www.gnu.org/licenses/>.
 //
 // Copyright (C) 2024 Brian 'redbeard' Harrington
-use rucat::formatters::{markdown::Markdown, Formatter};
+use rucat::formatters::{Formatter, markdown::Markdown};
 use std::path::Path;
 
 #[test]

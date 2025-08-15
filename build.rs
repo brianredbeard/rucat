@@ -1,6 +1,6 @@
 // build.rs
 use clap::CommandFactory;
-use clap_complete::{generate, Shell};
+use clap_complete::{Shell, generate};
 use clap_mangen::Man;
 use std::fs::{self, File};
 use std::path::Path;

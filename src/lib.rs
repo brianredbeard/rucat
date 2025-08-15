@@ -20,7 +20,7 @@ pub mod formatters;
 
 use crate::cli::OutputFormat;
 use crate::formatters::{
-    ansi::Ansi, ascii::Ascii, markdown::Markdown, pretty::Pretty, utf8::Utf8, xml::Xml, Formatter,
+    Formatter, ansi::Ansi, ascii::Ascii, markdown::Markdown, pretty::Pretty, utf8::Utf8, xml::Xml,
 };
 
 impl OutputFormat {
