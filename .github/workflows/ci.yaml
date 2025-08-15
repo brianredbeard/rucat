@@ -135,6 +135,7 @@ jobs:
 
       - name: Configure feature flags
         id: features
+        shell: bash
         run: |
           case "${{ matrix.features }}" in
             minimal) echo "flags=--no-default-features" >> $GITHUB_OUTPUT ;;
@@ -157,6 +158,7 @@ jobs:
 
       - name: Generate test report
         if: always()
+        shell: bash
         run: |
           echo "## Test Results (${{ matrix.os }}, ${{ matrix.rust }})" >> $GITHUB_STEP_SUMMARY
           echo "- Target: ${{ matrix.target }}" >> $GITHUB_STEP_SUMMARY
