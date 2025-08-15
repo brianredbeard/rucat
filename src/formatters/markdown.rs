@@ -26,7 +26,7 @@ impl Formatter for Markdown {
     fn write(&self, path: &Path, content: &str, w: &mut dyn Write) -> io::Result<()> {
         let extension = path.extension().and_then(|s| s.to_str()).unwrap_or("");
         writeln!(w, "---\nFile: {}\n---", path.display())?;
-        writeln!(w, "```{}", extension)?;
+        writeln!(w, "```{extension}")?;
         let total = content.lines().count();
         let digits = if self.line_numbers {
             total.to_string().len()
@@ -37,7 +37,7 @@ impl Formatter for Markdown {
             if self.line_numbers {
                 writeln!(w, "{:>w$} {}", idx + 1, line, w = digits)?;
             } else {
-                writeln!(w, "{}", line)?;
+                writeln!(w, "{line}")?;
             }
         }
         writeln!(w, "```")?;

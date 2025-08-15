@@ -38,7 +38,7 @@ fn generate_completions(cmd: &clap::Command) {
     // Fish
     let fish_dir = Path::new(completions_dir).join("fish");
     fs::create_dir_all(&fish_dir).unwrap();
-    let mut fish_file = File::create(fish_dir.join(format!("{}.fish", bin_name))).unwrap();
+    let mut fish_file = File::create(fish_dir.join(format!("{bin_name}.fish"))).unwrap();
     generate(Shell::Fish, &mut cmd, &bin_name, &mut fish_file);
 
     // Bash
@@ -50,6 +50,6 @@ fn generate_completions(cmd: &clap::Command) {
     // Zsh
     let zsh_dir = Path::new(completions_dir).join("zsh");
     fs::create_dir_all(&zsh_dir).unwrap();
-    let mut zsh_file = File::create(zsh_dir.join(format!("_{}", bin_name))).unwrap();
+    let mut zsh_file = File::create(zsh_dir.join(format!("_{bin_name}"))).unwrap();
     generate(Shell::Zsh, &mut cmd, &bin_name, &mut zsh_file);
 }

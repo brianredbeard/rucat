@@ -98,7 +98,7 @@ impl Formatter for Pretty {
                     Ok(ranges) => as_24_bit_terminal_escaped(&ranges[..], true),
                     Err(_) => line.to_string(), // Fallback to plain line on error
                 };
-                writeln!(w, "{}", escaped)?;
+                writeln!(w, "{escaped}")?;
             }
         }
         Ok(())

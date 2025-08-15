@@ -37,7 +37,7 @@ impl Formatter for Ascii {
                 //  number | content   (ASCII separator)
                 writeln!(w, "{:>w$} | {}", idx + 1, line, w = width)?;
             } else {
-                writeln!(w, "{}", line)?;
+                writeln!(w, "{line}")?;
             }
         }
         Ok(())

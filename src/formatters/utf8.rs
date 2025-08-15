@@ -52,13 +52,13 @@ impl Formatter for Utf8 {
 
         let hr = "─".repeat(interior);
 
-        writeln!(w, "┌{}┐", hr)?;
+        writeln!(w, "┌{hr}┐")?;
         writeln!(w, "│{}│", pad(&header, interior))?;
-        writeln!(w, "├{}┤", hr)?;
+        writeln!(w, "├{hr}┤")?;
         for line in body {
             writeln!(w, "│{}│", pad(&line, interior))?;
         }
-        writeln!(w, "└{}┘", hr)?;
+        writeln!(w, "└{hr}┘")?;
         Ok(())
     }
 }
@@ -67,7 +67,7 @@ fn pad(s: &str, width: usize) -> String {
     if s.len() < width {
         let mut out = String::with_capacity(width);
         out.push_str(s);
-        out.extend(std::iter::repeat(' ').take(width - s.len()));
+        out.extend(std::iter::repeat_n(' ', width - s.len()));
         out
     } else {
         s.to_owned()

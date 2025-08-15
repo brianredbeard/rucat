@@ -26,7 +26,7 @@ fn prepare_file(dir: &std::path::Path, name: &str, body: &str) -> std::path::Pat
         std::fs::create_dir_all(parent).unwrap(); // ensure nested dirs exist
     }
     let mut f = File::create(&p).unwrap();
-    write!(f, "{}", body).unwrap();
+    write!(f, "{body}").unwrap();
     p
 }
 
