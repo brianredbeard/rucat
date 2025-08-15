@@ -132,7 +132,7 @@ fn main() -> anyhow::Result<()> {
             line_numbers,
             pretty_syntax.as_deref(),
         );
-        if let OutputFormat::Json = format {
+        if format == OutputFormat::Json {
             let entries: Vec<FileEntry> = paths
                 .iter()
                 .filter_map(|p| read_file_content(p).ok().map(|c| (p, c)))
