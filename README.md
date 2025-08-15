@@ -2,11 +2,89 @@
 
 ![rucat image](/.assets/rucat.png)
 
-`rucat` is a modern, feature-rich replacement for the classic `cat` utility,
-written in Rust. It goes beyond simple file concatenation, offering multiple
+`rucat` is `cat` reborn for the era of LLMs. A critical tool for every prompt
+engineer.
+
+Written in Rust. It goes beyond simple file concatenation, offering multiple
 output formats, line numbering, and syntax-aware formatting, making it an ideal
 tool for developers, system administrators, and anyone working with code or text
 files in the terminal.
+
+## Powering AI and Development Workflows
+
+In modern development, AI assistants are invaluable for complex tasks like
+debugging, refactoring, or repository analysis. However, their effectiveness
+hinges on the quality and completeness of the context you provide. Manually
+copying and pasting from numerous files is slow and error-prone.
+
+`rucat` excels at rapidly consolidating context from multiple files into a
+single, well-structured block of text, perfect for an AI prompt.
+
+If you're troubleshooting a complex `git` history issue and need to provide an
+AI with the full state of your repository's refs and logs, you can run:
+
+```bash
+# Quickly gather all relevant git state files into one block
+$ rucat .git/{HEAD,config,info/exclude,logs/HEAD,logs/refs/heads/*}
+```
+
+````
+```
+---
+File: .git/HEAD
+---
+```
+ref: refs/heads/main
+```
+---
+File: .git/config
+---
+```
+[core]
+    repositoryformatversion = 0
+    filemode = true
+    bare = false
+    logallrefupdates = true
+    ignorecase = true
+    precomposeunicode = true
+[remote "origin"]
+    url = https://github.com/poundifdef/SmoothMQ
+    fetch = +refs/heads/*:refs/remotes/origin/*
+[branch "main"]
+    remote = origin
+    merge = refs/heads/main
+```
+---
+File: .git/info/exclude
+---
+```
+# git ls-files --others --exclude-from=.git/info/exclude
+# Lines that start with '#' are comments.
+# For a project mostly in C, the following would be a good set of
+# exclude patterns (uncomment them if you want to use them):
+# *.[oa]
+# *~
+```
+---
+File: .git/logs/HEAD
+---
+```
+0000000000000000000000000000000000000000 2770c4b21a3755e95652c24b71ac7cad87b532dc Brian 'redbeard' Harrington <redbeard@dead-city.org> 1718820643 -0700	clone: from https://github.com/poundifdef/SmoothMQ
+```
+---
+File: .git/logs/refs/heads/main
+---
+```
+0000000000000000000000000000000000000000 2770c4b21a3755e95652c24b71ac7cad87b532dc Brian 'redbeard' Harrington <redbeard@dead-city.org> 1718820643 -0700	clone: from https://github.com/poundifdef/SmoothMQ
+```
+````
+
+This command instantly generates a clean, markdown-formatted output, with each
+file's content neatly separated and labeled:
+
+The resulting text can be piped to your clipboard and pasted directly into your
+AI chat, delivering complete and unambiguous context in seconds. This makes
+`rucat` an essential tool for accelerating AI-driven development.
 
 ## Features
 
@@ -206,7 +284,8 @@ pretty_syntax = "rust"
 Contributions are welcome! If you have a feature request, bug report, or pull
 request, please feel free to open an issue or submit a PR.
 
-This tool was proudly co-written using [Aider](https://github.com/Aider-AI/aider)
+This tool was proudly co-written using
+[Aider](https://github.com/Aider-AI/aider)
 
 ## License
 
