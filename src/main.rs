@@ -147,7 +147,8 @@ fn main() -> anyhow::Result<()> {
             format_json(&entries)?;
         } else {
             for p in paths {
-                match read_file_content(&p) {
+                let result = read_file_content(&p);
+                match result {
                     Ok(content) => {
                         let display_path = strip_components(&p, strip);
                         if let Some(ref f) = fmt {
