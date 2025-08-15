@@ -155,23 +155,22 @@ jobs:
       - name: Check compilation
         run: cargo check --workspace --target ${{ matrix.target }} ${{ steps.features.outputs.flags }}
 
-      - name: Run tests
-        run: |
-          CARGO_TEST_ARGS="--workspace --target ${{ matrix.target }} ${{ steps.features.outputs.flags }} --verbose"
-          if [[ "${{ runner.os }}" == "Linux" && "${{ matrix.target }}" == "aarch64"* ]]; then
-            CARGO_TEST_ARGS="$CARGO_TEST_ARGS --no-run"
-          fi
-          cargo test $CARGO_TEST_ARGS
+      - name: Run tests (cross-compilation)
+        if: runner.os == 'Linux' && startsWith(matrix.target, 'aarch64')
+        run: cargo test --workspace --target ${{ matrix.target }} ${{ steps.features.outputs.flags }} --verbose --no-run
+        continue-on-error: ${{ matrix.allow-failure || false }}
+
+      - name: Run tests (native)
+        if: ${{ !(runner.os == 'Linux' && startsWith(matrix.target, 'aarch64')) }}
+        run: cargo test --workspace --target ${{ matrix.target }} ${{ steps.features.outputs.flags }} --verbose
         continue-on-error: ${{ matrix.allow-failure || false }}
 
       - name: Run doctests
-        if: matrix.rust == 'stable' && matrix.features != 'minimal'
-        run: |
-          CARGO_DOCTEST_ARGS="--workspace --doc --target ${{ matrix.target }} ${{ steps.features.outputs.flags }}"
-          if [[ "${{ runner.os }}" == "Linux" && "${{ matrix.target }}" == "aarch64"* ]]; then
-            CARGO_DOCTEST_ARGS="$CARGO_DOCTEST_ARGS --no-run"
-          fi
-          cargo test $CARGO_DOCTEST_ARGS
+        if: >-
+          matrix.rust == 'stable' &&
+          matrix.features != 'minimal' &&
+          ${{ !(runner.os == 'Linux' && startsWith(matrix.target, 'aarch64'))
+        run: cargo test --workspace --doc --target ${{ matrix.target }} ${{ steps.features.outputs.flags }}
         continue-on-error: ${{ matrix.allow-failure || false }}
 
       - name: Generate test report
