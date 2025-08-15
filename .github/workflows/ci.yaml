@@ -121,7 +121,7 @@ jobs:
         uses: actions/checkout@v4
 
       - name: Install Rust toolchain
-        uses: dtolnay/rust-toolchain@master
+        uses: dtolnay/rust-toolchain@stable
         with:
           toolchain: ${{ matrix.rust }}
           targets: ${{ matrix.target }}
@@ -166,10 +166,7 @@ jobs:
         continue-on-error: ${{ matrix.allow-failure || false }}
 
       - name: Run doctests
-        if: >-
-          matrix.rust == 'stable' &&
-          matrix.features != 'minimal' &&
-          ${{ !(runner.os == 'Linux' && startsWith(matrix.target, 'aarch64'))
+        if: ${{ matrix.rust == 'stable' && matrix.features != 'minimal' && !(runner.os == 'Linux' && startsWith(matrix.target, 'aarch64')) }}
         run: cargo test --workspace --doc --target ${{ matrix.target }} ${{ steps.features.outputs.flags }}
         continue-on-error: ${{ matrix.allow-failure || false }}
 
