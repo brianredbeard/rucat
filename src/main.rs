@@ -17,7 +17,6 @@
 use clap::Parser;
 use rucat::cli::{Args, OutputFormat};
 use serde::Deserialize;
-use clap::Parser;
 use std::fs;
 use std::io::{self, Read, Write};
 #[cfg(unix)]

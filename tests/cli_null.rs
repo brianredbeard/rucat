@@ -32,7 +32,8 @@ fn null_list_is_respected() {
 
     let input = format!("{}\0{}", f1.display(), f2.display());
 
-    Command::cargo_bin("rucat").unwrap()
+    Command::cargo_bin("rucat")
+        .unwrap()
         .args(["-0", "-f", "ascii"])
         .write_stdin(input)
         .assert()

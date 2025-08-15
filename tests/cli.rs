@@ -23,48 +23,57 @@ use tempfile::tempdir;
 fn prepare_file(dir: &std::path::Path, name: &str, body: &str) -> std::path::PathBuf {
     let p = dir.join(name);
     if let Some(parent) = p.parent() {
-        std::fs::create_dir_all(parent).unwrap();   // ensure nested dirs exist
+        std::fs::create_dir_all(parent).unwrap(); // ensure nested dirs exist
     }
     let mut f = File::create(&p).unwrap();
     write!(f, "{}", body).unwrap();
     p
 }
 
-#[test] fn cli_ascii_numbers() {
+#[test]
+fn cli_ascii_numbers() {
     let dir = tempdir().unwrap();
     let file = prepare_file(dir.path(), "a.txt", "hello\nworld\n");
-    Command::cargo_bin("rucat").unwrap()
+    Command::cargo_bin("rucat")
+        .unwrap()
         .args(["-f", "ascii", "-n"])
         .arg(&file)
         .assert()
         .success()
-        .stdout(predicate::str::contains("1 | hello")
-                              .and(predicate::str::contains("2 | world")));
+        .stdout(predicate::str::contains("1 | hello").and(predicate::str::contains("2 | world")));
 }
 
-#[test] fn cli_directory_recursion() {
+#[test]
+fn cli_directory_recursion() {
     let dir = tempdir().unwrap();
     prepare_file(dir.path(), "x.rs", "fn main(){}");
-    prepare_file(dir.path(), "y.c",  "int main(){}");
-    Command::cargo_bin("rucat").unwrap()
+    prepare_file(dir.path(), "y.c", "int main(){}");
+    Command::cargo_bin("rucat")
+        .unwrap()
         .args(["-f", "markdown"])
-        .arg(dir.path())          // pass directory, not files
+        .arg(dir.path()) // pass directory, not files
         .assert()
         .success()
-        .stdout(predicate::str::contains("File:")  // header appears twice
-                              .count(2));
+        .stdout(
+            predicate::str::contains("File:") // header appears twice
+                .count(2),
+        );
 }
 
-#[test] fn cli_bad_file_reports_error() {
-    Command::cargo_bin("rucat").unwrap()
+#[test]
+fn cli_bad_file_reports_error() {
+    Command::cargo_bin("rucat")
+        .unwrap()
         .args(["no_such_file.txt"])
         .assert()
         .stderr(predicate::str::contains("Error reading"))
-        .success();               // program keeps going, exits 0
+        .success(); // program keeps going, exits 0
 }
 
-#[test] fn cli_invalid_format_fails() {
-    Command::cargo_bin("rucat").unwrap()
+#[test]
+fn cli_invalid_format_fails() {
+    Command::cargo_bin("rucat")
+        .unwrap()
         .args(["--format", "bogus"])
         .assert()
         .failure()
@@ -74,7 +83,8 @@ fn prepare_file(dir: &std::path::Path, name: &str, body: &str) -> std::path::Pat
 fn cli_strip_components() {
     let dir = tempdir().unwrap();
     let p = prepare_file(dir.path(), "foo/bar/baz.h", "x"); // create sub-dirs
-    Command::cargo_bin("rucat").unwrap()
+    Command::cargo_bin("rucat")
+        .unwrap()
         .args(["-f", "ascii", "--strip", "2"])
         .arg(&p)
         .assert()
@@ -88,7 +98,8 @@ fn cli_pretty_default_by_extension() {
     let dir = tempdir().unwrap();
     let home_dir = tempdir().unwrap();
     let file = prepare_file(dir.path(), "a.rs", "fn main() {}");
-    Command::cargo_bin("rucat").unwrap()
+    Command::cargo_bin("rucat")
+        .unwrap()
         .env("HOME", home_dir.path())
         .args(["-f", "pretty"])
         .arg(&file)
@@ -104,23 +115,32 @@ fn cli_pretty_syntax_flag_overrides_extension() {
     // A .txt file with rust content
     let file = prepare_file(dir.path(), "a.txt", "fn main() {}");
     // Get output when highlighted as Rust (from flag)
-    let out_rust = Command::cargo_bin("rucat").unwrap()
+    let out_rust = Command::cargo_bin("rucat")
+        .unwrap()
         .env("HOME", home_dir.path())
         .args(["-f", "pretty", "--pretty-syntax", "rust"])
         .arg(&file)
         .assert()
         .success()
-        .get_output().stdout.clone();
+        .get_output()
+        .stdout
+        .clone();
     // Get output when highlighted as plain text (from .txt extension)
-    let out_plain = Command::cargo_bin("rucat").unwrap()
+    let out_plain = Command::cargo_bin("rucat")
+        .unwrap()
         .env("HOME", home_dir.path())
         .args(["-f", "pretty"])
         .arg(&file)
         .assert()
         .success()
-        .get_output().stdout.clone();
+        .get_output()
+        .stdout
+        .clone();
     // The two highlighted versions should be different.
-    assert_ne!(out_rust, out_plain, "Highlighting with flag should differ from highlighting by extension");
+    assert_ne!(
+        out_rust, out_plain,
+        "Highlighting with flag should differ from highlighting by extension"
+    );
 }
 
 #[test]
@@ -129,7 +149,8 @@ fn cli_pretty_modeline_overrides_extension() {
     let home_dir = tempdir().unwrap();
     // A .txt file with rust content and a modeline
     let file = prepare_file(dir.path(), "b.txt", "fn main() {}\n// vim: ft=rust");
-    Command::cargo_bin("rucat").unwrap()
+    Command::cargo_bin("rucat")
+        .unwrap()
         .env("HOME", home_dir.path())
         .args(["-f", "pretty"])
         .arg(&file)
@@ -146,27 +167,36 @@ fn cli_pretty_flag_overrides_modeline() {
     let file = prepare_file(dir.path(), "c.txt", "echo 'hello'\n# vim: ft=toml");
 
     // Get output when highlighted as shell (from flag)
-    let out_sh = Command::cargo_bin("rucat").unwrap()
+    let out_sh = Command::cargo_bin("rucat")
+        .unwrap()
         .env("HOME", home_dir.path())
         .args(["-f", "pretty", "--pretty-syntax", "sh"])
         .arg(&file)
         .assert()
         .success()
         .stdout(predicate::str::contains("\x1b[")) // Should be highlighted
-        .get_output().stdout.clone();
+        .get_output()
+        .stdout
+        .clone();
 
     // Get output when highlighted as TOML (from modeline)
-    let out_toml = Command::cargo_bin("rucat").unwrap()
+    let out_toml = Command::cargo_bin("rucat")
+        .unwrap()
         .env("HOME", home_dir.path())
         .args(["-f", "pretty"])
         .arg(&file)
         .assert()
         .success()
         .stdout(predicate::str::contains("\x1b[")) // Should be highlighted
-        .get_output().stdout.clone();
+        .get_output()
+        .stdout
+        .clone();
 
     // The two highlighted versions should be different
-    assert_ne!(out_sh, out_toml, "Syntax highlighting from CLI flag and modeline should differ");
+    assert_ne!(
+        out_sh, out_toml,
+        "Syntax highlighting from CLI flag and modeline should differ"
+    );
 }
 
 #[test]
@@ -187,7 +217,8 @@ fn cli_pretty_config_file_is_used() {
 
     let file = prepare_file(dir.path(), "d.txt", "fn main() {}");
 
-    Command::cargo_bin("rucat").unwrap()
+    Command::cargo_bin("rucat")
+        .unwrap()
         .env("HOME", home_dir.path())
         .args(["-f", "pretty"])
         .arg(&file)
@@ -216,23 +247,32 @@ fn cli_pretty_config_is_overridden_by_flag() {
     let file = prepare_file(dir.path(), "e.txt", "echo 'hello'");
 
     // Get output when highlighted as shell (from flag). The config file wants TOML.
-    let out_sh_from_flag = Command::cargo_bin("rucat").unwrap()
+    let out_sh_from_flag = Command::cargo_bin("rucat")
+        .unwrap()
         .env("HOME", home_dir.path())
         .args(["-f", "pretty", "--pretty-syntax", "sh"])
         .arg(&file)
         .assert()
         .success()
-        .get_output().stdout.clone();
+        .get_output()
+        .stdout
+        .clone();
 
     // Get output when highlighted as TOML (from config, no flag).
-    let out_toml_from_config = Command::cargo_bin("rucat").unwrap()
+    let out_toml_from_config = Command::cargo_bin("rucat")
+        .unwrap()
         .env("HOME", home_dir.path())
         .args(["-f", "pretty"])
         .arg(&file)
         .assert()
         .success()
-        .get_output().stdout.clone();
+        .get_output()
+        .stdout
+        .clone();
 
     // The two highlighted versions should be different.
-    assert_ne!(out_sh_from_flag, out_toml_from_config, "Highlighting from CLI flag should override config file");
+    assert_ne!(
+        out_sh_from_flag, out_toml_from_config,
+        "Highlighting from CLI flag should override config file"
+    );
 }
