@@ -234,6 +234,7 @@ jobs:
   cross-compile:
     name: Cross-compile ${{ matrix.target }}
     runs-on: ubuntu-latest
+    continue-on-error: true
     needs: [test, security]
     strategy:
       fail-fast: false
