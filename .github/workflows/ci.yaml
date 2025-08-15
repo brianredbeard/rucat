@@ -255,7 +255,10 @@ jobs:
             armv7-unknown-linux-gnueabihf)
               sudo apt-get install -y gcc-arm-linux-gnueabihf
               ;;
-            *-musl)
+            aarch64-unknown-linux-musl)
+              sudo apt-get install -y gcc-aarch64-linux-gnu musl-tools
+              ;;
+            x86_64-unknown-linux-musl)
               sudo apt-get install -y musl-tools
               ;;
           esac
@@ -268,6 +271,9 @@ jobs:
               ;;
             armv7-unknown-linux-gnueabihf)
               echo "CARGO_TARGET_ARMV7_UNKNOWN_LINUX_GNUEABIHF_LINKER=arm-linux-gnueabihf-gcc" >> $GITHUB_ENV
+              ;;
+            aarch64-unknown-linux-musl)
+              echo "CARGO_TARGET_AARCH64_UNKNOWN_LINUX_MUSL_LINKER=aarch64-linux-gnu-gcc" >> $GITHUB_ENV
               ;;
           esac
 
