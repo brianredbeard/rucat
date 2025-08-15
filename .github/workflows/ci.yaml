@@ -157,12 +157,21 @@ jobs:
 
       - name: Run tests
         run: |
-          cargo test --workspace --target ${{ matrix.target }} ${{ steps.features.outputs.flags }} --verbose
+          CARGO_TEST_ARGS="--workspace --target ${{ matrix.target }} ${{ steps.features.outputs.flags }} --verbose"
+          if [[ "${{ runner.os }}" == "Linux" && "${{ matrix.target }}" == "aarch64"* ]]; then
+            CARGO_TEST_ARGS="$CARGO_TEST_ARGS --no-run"
+          fi
+          cargo test $CARGO_TEST_ARGS
         continue-on-error: ${{ matrix.allow-failure || false }}
 
       - name: Run doctests
         if: matrix.rust == 'stable' && matrix.features != 'minimal'
-        run: cargo test --workspace --doc ${{ steps.features.outputs.flags }}
+        run: |
+          CARGO_DOCTEST_ARGS="--workspace --doc --target ${{ matrix.target }} ${{ steps.features.outputs.flags }}"
+          if [[ "${{ runner.os }}" == "Linux" && "${{ matrix.target }}" == "aarch64"* ]]; then
+            CARGO_DOCTEST_ARGS="$CARGO_DOCTEST_ARGS --no-run"
+          fi
+          cargo test $CARGO_DOCTEST_ARGS
         continue-on-error: ${{ matrix.allow-failure || false }}
 
       - name: Generate test report
