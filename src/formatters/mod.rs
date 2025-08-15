@@ -18,6 +18,11 @@ use std::io::{self, Write};
 use std::path::Path;
 
 pub trait Formatter {
+    /// Writes the content to the given writer, applying formatting.
+    ///
+    /// # Errors
+    ///
+    /// Will return `Err` if it fails to write to the given writer.
     fn write(&self, path: &Path, content: &str, w: &mut dyn Write) -> io::Result<()>;
 }
 

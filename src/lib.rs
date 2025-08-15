@@ -32,22 +32,22 @@ impl OutputFormat {
         pretty_syntax: Option<&str>,
     ) -> Option<Box<dyn Formatter>> {
         match self {
-            OutputFormat::Ansi => Some(Box::new(Ansi {
+            Self::Ansi => Some(Box::new(Ansi {
                 width: ansi_width,
                 line_numbers: ln,
             })),
-            OutputFormat::Xml => Some(Box::new(Xml { line_numbers: ln })),
-            OutputFormat::Markdown => Some(Box::new(Markdown { line_numbers: ln })),
-            OutputFormat::Ascii => Some(Box::new(Ascii { line_numbers: ln })),
-            OutputFormat::Utf8 => Some(Box::new(Utf8 {
+            Self::Xml => Some(Box::new(Xml { line_numbers: ln })),
+            Self::Markdown => Some(Box::new(Markdown { line_numbers: ln })),
+            Self::Ascii => Some(Box::new(Ascii { line_numbers: ln })),
+            Self::Utf8 => Some(Box::new(Utf8 {
                 width: utf8_width,
                 line_numbers: ln,
             })),
-            OutputFormat::Pretty => Some(Box::new(Pretty {
+            Self::Pretty => Some(Box::new(Pretty {
                 line_numbers: ln,
                 syntax_override: pretty_syntax.map(String::from),
             })),
-            OutputFormat::Json => None,
+            Self::Json => None,
         }
     }
 }

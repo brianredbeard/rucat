@@ -15,16 +15,16 @@
 //
 // Copyright (C) 2024 Brian 'redbeard' Harrington
 use super::Formatter;
-use once_cell::sync::Lazy;
 use regex::Regex;
 use std::io::{self, Write};
 use std::path::Path;
+use std::sync::LazyLock;
 use syntect::easy::HighlightLines;
 use syntect::highlighting::ThemeSet;
 use syntect::parsing::SyntaxSet;
 use syntect::util::as_24_bit_terminal_escaped;
 
-static MODELINE_RE: Lazy<Regex> = Lazy::new(|| {
+static MODELINE_RE: LazyLock<Regex> = LazyLock::new(|| {
     Regex::new(r"(?:vim|vi|ex)\s*:[^:]*:(?:ft|filetype|syntax)=([a-zA-Z0-9_.-]+)").unwrap()
 });
 
@@ -60,8 +60,8 @@ pub struct Pretty {
     pub syntax_override: Option<String>,
 }
 
-static SYNTAX_SET: Lazy<SyntaxSet> = Lazy::new(SyntaxSet::load_defaults_newlines);
-static THEME_SET: Lazy<ThemeSet> = Lazy::new(ThemeSet::load_defaults);
+static SYNTAX_SET: LazyLock<SyntaxSet> = LazyLock::new(SyntaxSet::load_defaults_newlines);
+static THEME_SET: LazyLock<ThemeSet> = LazyLock::new(ThemeSet::load_defaults);
 
 impl Formatter for Pretty {
     fn write(&self, path: &Path, content: &str, w: &mut dyn Write) -> io::Result<()> {
@@ -86,18 +86,18 @@ impl Formatter for Pretty {
         if self.line_numbers {
             let digits = content.lines().count().to_string().len();
             for (idx, line) in content.lines().enumerate() {
-                let escaped = match h.highlight_line(line, &SYNTAX_SET) {
-                    Ok(ranges) => as_24_bit_terminal_escaped(&ranges[..], true),
-                    Err(_) => line.to_string(), // Fallback to plain line on error
-                };
+                let escaped = h.highlight_line(line, &SYNTAX_SET).map_or_else(
+                    |_| line.to_string(), // Fallback to plain line on error
+                    |ranges| as_24_bit_terminal_escaped(&ranges[..], true),
+                );
                 writeln!(w, "{:>w$} │ {}", idx + 1, escaped, w = digits)?;
             }
         } else {
             for line in content.lines() {
-                let escaped = match h.highlight_line(line, &SYNTAX_SET) {
-                    Ok(ranges) => as_24_bit_terminal_escaped(&ranges[..], true),
-                    Err(_) => line.to_string(), // Fallback to plain line on error
-                };
+                let escaped = h.highlight_line(line, &SYNTAX_SET).map_or_else(
+                    |_| line.to_string(), // Fallback to plain line on error
+                    |ranges| as_24_bit_terminal_escaped(&ranges[..], true),
+                );
                 writeln!(w, "{escaped}")?;
             }
         }
