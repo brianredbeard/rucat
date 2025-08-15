@@ -276,8 +276,9 @@ jobs:
               echo "CARGO_TARGET_ARMV7_UNKNOWN_LINUX_GNUEABIHF_LINKER=arm-linux-gnueabihf-gcc" >> $GITHUB_ENV
               ;;
             aarch64-unknown-linux-musl)
-              sudo apt-get install -y gcc-aarch64-linux-gnu musl-tools
-              echo "CARGO_TARGET_AARCH64_UNKNOWN_LINUX_MUSL_LINKER=aarch64-linux-gnu-gcc" >> $GITHUB_ENV
+              curl -O "https://musl.cc/aarch64-linux-musl-cross.tgz"
+              tar -xzf aarch64-linux-musl-cross.tgz
+              echo "$(pwd)/aarch64-linux-musl-cross/bin" >> $GITHUB_PATH
               ;;
             *-musl) # Catches x86_64-unknown-linux-musl
               sudo apt-get install -y musl-tools
