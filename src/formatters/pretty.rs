@@ -22,7 +22,7 @@ use std::sync::LazyLock;
 use syntect::easy::HighlightLines;
 use syntect::highlighting::ThemeSet;
 use syntect::parsing::SyntaxSet;
-use syntect::util::as_24_bit_terminal_escaped;
+use syntect::util::{LinesWithEndings, as_24_bit_terminal_escaped};
 
 static MODELINE_RE: LazyLock<Regex> = LazyLock::new(|| {
     Regex::new(r"(?:vim|vi|ex)\s*:[^:]*:(?:ft|filetype|syntax)=([a-zA-Z0-9_.-]+)").unwrap()
@@ -35,20 +35,20 @@ fn find_syntax_from_modeline(content: &str) -> Option<String> {
 
     // Check the first 5 lines.
     for line in lines.iter().take(5) {
-        if let Some(caps) = MODELINE_RE.captures(line) {
-            if let Some(syntax) = caps.get(1) {
-                return Some(syntax.as_str().to_owned());
-            }
+        if let Some(caps) = MODELINE_RE.captures(line)
+            && let Some(syntax) = caps.get(1)
+        {
+            return Some(syntax.as_str().to_owned());
         }
     }
 
     // Check the last 5 lines if the file is long enough.
     if line_count > 5 {
         for line in lines.iter().rev().take(5) {
-            if let Some(caps) = MODELINE_RE.captures(line) {
-                if let Some(syntax) = caps.get(1) {
-                    return Some(syntax.as_str().to_owned());
-                }
+            if let Some(caps) = MODELINE_RE.captures(line)
+                && let Some(syntax) = caps.get(1)
+            {
+                return Some(syntax.as_str().to_owned());
             }
         }
     }
@@ -85,20 +85,20 @@ impl Formatter for Pretty {
 
         if self.line_numbers {
             let digits = content.lines().count().to_string().len();
-            for (idx, line) in content.lines().enumerate() {
+            for (idx, line) in LinesWithEndings::from(content).enumerate() {
                 let escaped = h.highlight_line(line, &SYNTAX_SET).map_or_else(
                     |_| line.to_string(), // Fallback to plain line on error
                     |ranges| as_24_bit_terminal_escaped(&ranges[..], true),
                 );
-                writeln!(w, "{:>w$} │ {}", idx + 1, escaped, w = digits)?;
+                write!(w, "{:>w$} │ {escaped}", idx + 1, w = digits)?;
             }
         } else {
-            for line in content.lines() {
+            for line in LinesWithEndings::from(content) {
                 let escaped = h.highlight_line(line, &SYNTAX_SET).map_or_else(
                     |_| line.to_string(), // Fallback to plain line on error
                     |ranges| as_24_bit_terminal_escaped(&ranges[..], true),
                 );
-                writeln!(w, "{escaped}")?;
+                write!(w, "{escaped}")?;
             }
         }
         Ok(())
