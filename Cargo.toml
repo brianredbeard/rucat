@@ -3,11 +3,12 @@ name = "rucat"
 version = "0.2.0"
 authors = ["Brian 'redbeard' Harrington <redbeard@dead-city.org>"]
 edition = "2024"
-description = "A modern, feature-rich replacement for the classic `cat` utility, written in Rust."
+description = "rucat is 'cat' reborn for the era of LLMs. A critical tool for every prompt engineer."
+categories = ["command-line-utilities", "development-tools", "science::ai", "text-processing"]
+keywords = ["ai", "cat", "cli", "context", "formatter", "llm", "prompt", "syntax-highlighting", "utility"]
 readme = "README.md"
 repository = "https://github.com/brianredbeard/rucat"
 license = "GPL-3.0-or-later"
-license-file = "LICENSE"
 
 [package.metadata.deb]
 maintainer = "Brian 'redbeard' Harrington <redbeard@dead-city.org>"
