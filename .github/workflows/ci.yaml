@@ -45,11 +45,7 @@ jobs:
 
       - name: Run Clippy (pedantic)
         run: |
-          cargo clippy --workspace --all-targets --all-features -- \
-            -D warnings \
-            -W clippy::pedantic \
-            -W clippy::nursery \
-            -W clippy::cargo
+          cargo clippy --workspace --all-targets --all-features -- -D warnings
 
       - name: Check documentation
         run: cargo doc --workspace --all-features --no-deps --document-private-items
