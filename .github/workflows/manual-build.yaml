@@ -1,0 +1,416 @@
+---
+# Manual build workflow for Rust projects
+# Provides on-demand builds with customizable parameters
+# Useful for testing specific configurations and generating artifacts
+name: Manual Build
+
+on:
+  workflow_dispatch:
+    inputs:
+      rust_version:
+        description: 'Rust toolchain version'
+        required: true
+        default: 'stable'
+        type: choice
+        options:
+          - stable
+          - beta
+          - nightly
+          - 1.70.0  # MSRV
+      
+      build_targets:
+        description: 'Build targets (comma-separated)'
+        required: true
+        default: 'x86_64-unknown-linux-gnu,x86_64-pc-windows-msvc,x86_64-apple-darwin'
+        type: string
+
+      build_profile:
+        description: 'Build profile'
+        required: true
+        default: 'release'
+        type: choice
+        options:
+          - debug
+          - release
+          - release-lto  # Custom profile with LTO
+
+      features:
+        description: 'Cargo features'
+        required: false
+        default: 'default'
+        type: choice
+        options:
+          - default
+          - all
+          - none
+          - custom
+
+      custom_features:
+        description: 'Custom features (if "custom" selected above)'
+        required: false
+        default: ''
+        type: string
+
+      run_tests:
+        description: 'Run test suite'
+        required: false
+        default: true
+        type: boolean
+
+      run_security_scan:
+        description: 'Run security scanning'
+        required: false
+        default: true
+        type: boolean
+
+      create_artifacts:
+        description: 'Create downloadable artifacts'
+        required: false
+        default: true
+        type: boolean
+
+      artifact_retention_days:
+        description: 'Artifact retention (days)'
+        required: false
+        default: '30'
+        type: string
+
+env:
+  CARGO_TERM_COLOR: always
+  CARGO_INCREMENTAL: 0
+  RUST_BACKTRACE: full
+
+jobs:
+  # Setup job to parse inputs and generate build matrix
+  setup:
+    name: Setup Build Configuration
+    runs-on: ubuntu-latest
+    outputs:
+      matrix: ${{ steps.matrix.outputs.matrix }}
+      build-profile: ${{ steps.config.outputs.build-profile }}
+      feature-flags: ${{ steps.config.outputs.feature-flags }}
+      cargo-args: ${{ steps.config.outputs.cargo-args }}
+
+    steps:
+      - name: Parse build configuration
+        id: config
+        run: |
+          # Parse build profile
+          case "${{ github.event.inputs.build_profile }}" in
+            debug)
+              echo "build-profile=debug" >> $GITHUB_OUTPUT
+              echo "cargo-args=" >> $GITHUB_OUTPUT
+              ;;
+            release)
+              echo "build-profile=release" >> $GITHUB_OUTPUT
+              echo "cargo-args=--release" >> $GITHUB_OUTPUT
+              ;;
+            release-lto)
+              echo "build-profile=release" >> $GITHUB_OUTPUT
+              echo "cargo-args=--release --config profile.release.lto=true --config profile.release.codegen-units=1" >> $GITHUB_OUTPUT
+              ;;
+          esac
+
+          # Parse feature flags
+          case "${{ github.event.inputs.features }}" in
+            default)
+              echo "feature-flags=" >> $GITHUB_OUTPUT
+              ;;
+            all)
+              echo "feature-flags=--all-features" >> $GITHUB_OUTPUT
+              ;;
+            none)
+              echo "feature-flags=--no-default-features" >> $GITHUB_OUTPUT
+              ;;
+            custom)
+              echo "feature-flags=--no-default-features --features ${{ github.event.inputs.custom_features }}" >> $GITHUB_OUTPUT
+              ;;
+          esac
+
+      - name: Generate build matrix
+        id: matrix
+        run: |
+          # Parse targets from comma-separated input
+          TARGETS="${{ github.event.inputs.build_targets }}"
+          
+          # Create JSON array for matrix
+          MATRIX=$(echo "$TARGETS" | jq -R 'split(",") | map(select(length > 0) | ltrimstr(" ") | rtrimstr(" ")) | map({
+            target: .,
+            os: (if test("windows") then "windows-latest"
+                 elif test("apple|darwin") then "macos-latest"  
+                 elif test("musl") then "ubuntu-latest"
+                 else "ubuntu-latest" end),
+            cross: (if test("aarch64.*linux|armv7.*linux|.*musl") then true else false end)
+          }) | {include: .}')
+          
+          echo "matrix=$MATRIX" >> $GITHUB_OUTPUT
+          echo "Generated build matrix:"
+          echo "$MATRIX" | jq .
+
+      - name: Build configuration summary
+        run: |
+          echo "## Manual Build Configuration" >> $GITHUB_STEP_SUMMARY
+          echo "- **Rust Version**: ${{ github.event.inputs.rust_version }}" >> $GITHUB_STEP_SUMMARY
+          echo "- **Build Profile**: ${{ github.event.inputs.build_profile }}" >> $GITHUB_STEP_SUMMARY
+          echo "- **Features**: ${{ github.event.inputs.features }}" >> $GITHUB_STEP_SUMMARY
+          echo "- **Custom Features**: ${{ github.event.inputs.custom_features }}" >> $GITHUB_STEP_SUMMARY
+          echo "- **Run Tests**: ${{ github.event.inputs.run_tests }}" >> $GITHUB_STEP_SUMMARY
+          echo "- **Security Scan**: ${{ github.event.inputs.run_security_scan }}" >> $GITHUB_STEP_SUMMARY
+          echo "- **Create Artifacts**: ${{ github.event.inputs.create_artifacts }}" >> $GITHUB_STEP_SUMMARY
+          echo "- **Targets**: ${{ github.event.inputs.build_targets }}" >> $GITHUB_STEP_SUMMARY
+
+  # Optional testing job
+  test:
+    name: Test Suite (${{ github.event.inputs.rust_version }})
+    runs-on: ubuntu-latest
+    needs: setup
+    if: github.event.inputs.run_tests == 'true'
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: ${{ github.event.inputs.rust_version }}
+
+      - name: Setup Rust cache
+        uses: Swatinem/rust-cache@v2
+        with:
+          cache-on-failure: true
+          key: test-${{ github.event.inputs.rust_version }}
+
+      - name: Run tests
+        run: |
+          cargo test --workspace --verbose ${{ needs.setup.outputs.feature-flags }}
+
+      - name: Run doctests
+        if: github.event.inputs.features != 'none'
+        run: |
+          cargo test --workspace --doc ${{ needs.setup.outputs.feature-flags }}
+
+      - name: Test report
+        run: |
+          echo "### Test Results" >> $GITHUB_STEP_SUMMARY
+          echo "- Rust: ${{ github.event.inputs.rust_version }}" >> $GITHUB_STEP_SUMMARY
+          echo "- Features: ${{ github.event.inputs.features }}" >> $GITHUB_STEP_SUMMARY
+          echo "- Status: ✅ Passed" >> $GITHUB_STEP_SUMMARY
+
+  # Optional security scanning
+  security:
+    name: Security Scan
+    runs-on: ubuntu-latest
+    needs: setup
+    if: github.event.inputs.run_security_scan == 'true'
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Setup Rust cache
+        uses: Swatinem/rust-cache@v2
+        with:
+          cache-on-failure: true
+          key: security
+
+      - name: Install security tools
+        run: |
+          cargo install --locked cargo-audit
+          cargo install --locked cargo-deny
+
+      - name: Run security audit
+        run: |
+          echo "### Security Audit" >> $GITHUB_STEP_SUMMARY
+          cargo audit || echo "::warning::Vulnerabilities found"
+
+      - name: Run dependency policy check
+        run: |
+          if [ ! -f deny.toml ]; then
+            cargo deny init
+          fi
+          cargo deny check || echo "::warning::Policy violations found"
+
+  # Main build job with matrix strategy
+  build:
+    name: Build ${{ matrix.target }} (${{ github.event.inputs.build_profile }})
+    runs-on: ${{ matrix.os }}
+    needs: [setup, test]
+    if: always() && (needs.test.result == 'success' || needs.test.result == 'skipped')
+    strategy:
+      fail-fast: false
+      matrix: ${{ fromJson(needs.setup.outputs.matrix) }}
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0  # Full history for version info
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: ${{ github.event.inputs.rust_version }}
+          targets: ${{ matrix.target }}
+
+      - name: Setup Rust cache
+        uses: Swatinem/rust-cache@v2
+        with:
+          cache-on-failure: true
+          key: ${{ matrix.target }}-${{ github.event.inputs.rust_version }}-${{ github.event.inputs.build_profile }}
+
+      - name: Install cross-compilation dependencies (Linux)
+        if: runner.os == 'Linux' && matrix.cross
+        run: |
+          sudo apt-get update
+          case "${{ matrix.target }}" in
+            aarch64-unknown-linux-gnu)
+              sudo apt-get install -y gcc-aarch64-linux-gnu
+              echo "CARGO_TARGET_AARCH64_UNKNOWN_LINUX_GNU_LINKER=aarch64-linux-gnu-gcc" >> $GITHUB_ENV
+              ;;
+            armv7-unknown-linux-gnueabihf)
+              sudo apt-get install -y gcc-arm-linux-gnueabihf
+              echo "CARGO_TARGET_ARMV7_UNKNOWN_LINUX_GNUEABIHF_LINKER=arm-linux-gnueabihf-gcc" >> $GITHUB_ENV
+              ;;
+            *-musl)
+              sudo apt-get install -y musl-tools
+              ;;
+          esac
+
+      - name: Build binary
+        run: |
+          echo "Building for target: ${{ matrix.target }}"
+          echo "Profile: ${{ github.event.inputs.build_profile }}"
+          echo "Features: ${{ needs.setup.outputs.feature-flags }}"
+          
+          cargo build \
+            --target ${{ matrix.target }} \
+            ${{ needs.setup.outputs.cargo-args }} \
+            ${{ needs.setup.outputs.feature-flags }} \
+            --verbose
+
+      - name: Get binary info
+        id: binary-info
+        run: |
+          # Find the binary name from Cargo.toml
+          BINARY_NAME=$(grep -E "^name\s*=" Cargo.toml | head -1 | sed 's/name\s*=\s*"\(.*\)"/\1/')
+          
+          if [ "${{ runner.os }}" = "Windows" ]; then
+            BINARY_PATH="target/${{ matrix.target }}/${{ needs.setup.outputs.build-profile }}/${BINARY_NAME}.exe"
+            BINARY_EXT=".exe"
+          else
+            BINARY_PATH="target/${{ matrix.target }}/${{ needs.setup.outputs.build-profile }}/${BINARY_NAME}"
+            BINARY_EXT=""
+          fi
+          
+          echo "binary-name=${BINARY_NAME}" >> $GITHUB_OUTPUT
+          echo "binary-path=${BINARY_PATH}" >> $GITHUB_OUTPUT
+          echo "binary-ext=${BINARY_EXT}" >> $GITHUB_OUTPUT
+
+      - name: Test binary (basic smoke test)
+        if: matrix.target == 'x86_64-unknown-linux-gnu' || matrix.target == 'x86_64-pc-windows-msvc' || matrix.target == 'x86_64-apple-darwin'
+        run: |
+          # Run a basic smoke test if the binary supports --version or --help
+          if [ -f "${{ steps.binary-info.outputs.binary-path }}" ]; then
+            echo "Testing binary..."
+            ${{ steps.binary-info.outputs.binary-path }} --version || \
+            ${{ steps.binary-info.outputs.binary-path }} --help || \
+            echo "Binary exists but doesn't support --version or --help"
+          fi
+
+      - name: Prepare artifacts
+        if: github.event.inputs.create_artifacts == 'true'
+        shell: bash
+        run: |
+          mkdir -p staging
+          
+          # Copy binary
+          cp "${{ steps.binary-info.outputs.binary-path }}" staging/
+          
+          # Copy documentation
+          [ -f README.md ] && cp README.md staging/
+          [ -f LICENSE ] && cp LICENSE staging/
+          [ -f CHANGELOG.md ] && cp CHANGELOG.md staging/
+          
+          # Get version info
+          VERSION=$(git describe --tags --always --dirty)
+          echo "$VERSION" > staging/VERSION.txt
+          
+          # Create build info
+          cat > staging/BUILD_INFO.txt << EOF
+          Build Configuration:
+          - Target: ${{ matrix.target }}
+          - Rust: ${{ github.event.inputs.rust_version }}
+          - Profile: ${{ github.event.inputs.build_profile }}
+          - Features: ${{ github.event.inputs.features }}
+          - Built: $(date -u)
+          - Git: $(git rev-parse HEAD)
+          EOF
+          
+          # Create archive
+          if [ "${{ runner.os }}" = "Windows" ]; then
+            7z a "${{ steps.binary-info.outputs.binary-name }}-${{ matrix.target }}.zip" staging/*
+            echo "ARCHIVE=${{ steps.binary-info.outputs.binary-name }}-${{ matrix.target }}.zip" >> $GITHUB_ENV
+          else
+            tar czf "${{ steps.binary-info.outputs.binary-name }}-${{ matrix.target }}.tar.gz" -C staging .
+            echo "ARCHIVE=${{ steps.binary-info.outputs.binary-name }}-${{ matrix.target }}.tar.gz" >> $GITHUB_ENV
+          fi
+
+      - name: Upload build artifacts
+        if: github.event.inputs.create_artifacts == 'true'
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ steps.binary-info.outputs.binary-name }}-${{ matrix.target }}
+          path: ${{ env.ARCHIVE }}
+          retention-days: ${{ github.event.inputs.artifact_retention_days }}
+
+      - name: Build summary
+        run: |
+          echo "### Build Results (${{ matrix.target }})" >> $GITHUB_STEP_SUMMARY
+          echo "- **Status**: ✅ Success" >> $GITHUB_STEP_SUMMARY
+          echo "- **Binary**: ${{ steps.binary-info.outputs.binary-name }}" >> $GITHUB_STEP_SUMMARY
+          echo "- **Size**: $(ls -lh '${{ steps.binary-info.outputs.binary-path }}' | awk '{print $5}')" >> $GITHUB_STEP_SUMMARY
+          if [ "${{ github.event.inputs.create_artifacts }}" = "true" ]; then
+            echo "- **Artifact**: ${{ env.ARCHIVE }}" >> $GITHUB_STEP_SUMMARY
+          fi
+
+  # Final summary job
+  summary:
+    name: Build Summary
+    runs-on: ubuntu-latest
+    needs: [setup, test, security, build]
+    if: always()
+
+    steps:
+      - name: Generate final summary
+        run: |
+          echo "# Manual Build Results" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "## Configuration" >> $GITHUB_STEP_SUMMARY
+          echo "- **Rust**: ${{ github.event.inputs.rust_version }}" >> $GITHUB_STEP_SUMMARY
+          echo "- **Profile**: ${{ github.event.inputs.build_profile }}" >> $GITHUB_STEP_SUMMARY
+          echo "- **Features**: ${{ github.event.inputs.features }}" >> $GITHUB_STEP_SUMMARY
+          echo "- **Targets**: ${{ github.event.inputs.build_targets }}" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "## Results" >> $GITHUB_STEP_SUMMARY
+          echo "| Job | Status |" >> $GITHUB_STEP_SUMMARY
+          echo "|-----|--------|" >> $GITHUB_STEP_SUMMARY
+          echo "| Test | ${{ needs.test.result || 'skipped' }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| Security | ${{ needs.security.result || 'skipped' }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| Build | ${{ needs.build.result }} |" >> $GITHUB_STEP_SUMMARY
+          
+          # Overall status
+          if [[ "${{ needs.build.result }}" == "success" ]]; then
+            echo "" >> $GITHUB_STEP_SUMMARY
+            echo "🎉 **Manual build completed successfully!**" >> $GITHUB_STEP_SUMMARY
+            if [[ "${{ github.event.inputs.create_artifacts }}" == "true" ]]; then
+              echo "📦 Artifacts are available for download." >> $GITHUB_STEP_SUMMARY
+            fi
+          else
+            echo "" >> $GITHUB_STEP_SUMMARY
+            echo "❌ **Manual build failed.**" >> $GITHUB_STEP_SUMMARY
+            exit 1
+          fi

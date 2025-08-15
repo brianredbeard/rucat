@@ -1,0 +1,517 @@
+---
+# Professional release workflow for Rust projects
+# Triggered by version tags or manual dispatch
+# Includes comprehensive testing, security validation, and automated publishing
+name: Release
+
+on:
+  push:
+    tags:
+      - 'v[0-9]+.[0-9]+.[0-9]+'
+      - 'v[0-9]+.[0-9]+.[0-9]+-rc.[0-9]+'
+      - 'v[0-9]+.[0-9]+.[0-9]+-beta.[0-9]+'
+
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: 'Release tag (e.g., v1.2.3)'
+        required: true
+        type: string
+      
+      prerelease:
+        description: 'Mark as prerelease'
+        required: false
+        default: false
+        type: boolean
+
+      draft:
+        description: 'Create as draft release'
+        required: false
+        default: false
+        type: boolean
+
+      publish_crate:
+        description: 'Publish to crates.io'
+        required: false
+        default: false
+        type: boolean
+
+env:
+  CARGO_TERM_COLOR: always
+  CARGO_INCREMENTAL: 0
+  RUST_BACKTRACE: short
+
+permissions:
+  contents: write        # For creating releases
+  attestations: write    # For build attestations
+  id-token: write       # For OIDC attestations
+  packages: write       # For container publishing (if applicable)
+
+jobs:
+  # Pre-flight checks and version validation
+  validate:
+    name: Validate Release
+    runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.version.outputs.version }}
+      tag-name: ${{ steps.version.outputs.tag-name }}
+      is-prerelease: ${{ steps.version.outputs.is-prerelease }}
+      changelog: ${{ steps.changelog.outputs.changelog }}
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0  # Full history for changelog
+
+      - name: Determine version
+        id: version
+        run: |
+          if [[ "${{ github.event_name }}" == "workflow_dispatch" ]]; then
+            TAG_NAME="${{ github.event.inputs.tag }}"
+            if [[ ! "$TAG_NAME" =~ ^v[0-9]+\.[0-9]+\.[0-9]+(-.*)?$ ]]; then
+              echo "::error::Invalid tag format. Use v1.2.3 or v1.2.3-rc.1"
+              exit 1
+            fi
+          else
+            TAG_NAME="${{ github.ref_name }}"
+          fi
+          
+          VERSION=$(echo "$TAG_NAME" | sed 's/^v//')
+          echo "version=$VERSION" >> $GITHUB_OUTPUT
+          echo "tag-name=$TAG_NAME" >> $GITHUB_OUTPUT
+          
+          # Check if prerelease
+          if [[ "$VERSION" =~ -|${{ github.event.inputs.prerelease == 'true' }} ]]; then
+            echo "is-prerelease=true" >> $GITHUB_OUTPUT
+          else
+            echo "is-prerelease=false" >> $GITHUB_OUTPUT
+          fi
+          
+          echo "Release version: $VERSION"
+          echo "Tag name: $TAG_NAME"
+
+      - name: Validate Cargo.toml version
+        run: |
+          CARGO_VERSION=$(grep -E "^version\s*=" Cargo.toml | head -1 | sed 's/version\s*=\s*"\(.*\)"/\1/')
+          if [[ "$CARGO_VERSION" != "${{ steps.version.outputs.version }}" ]]; then
+            echo "::error::Version mismatch: Cargo.toml has $CARGO_VERSION, but tag is ${{ steps.version.outputs.version }}"
+            exit 1
+          fi
+          echo "✅ Version validation passed"
+
+      - name: Generate changelog
+        id: changelog
+        run: |
+          # Extract changelog for this version
+          if [ -f CHANGELOG.md ]; then
+            # Try to extract changelog section for this version
+            CHANGELOG=$(awk '/^## \[?'${{ steps.version.outputs.version }}'\]?/,/^## \[?[0-9]/ {
+              if (/^## \[?[0-9]/ && !/^## \[?'${{ steps.version.outputs.version }}'\]?/) exit
+              if (!/^## \[?'${{ steps.version.outputs.version }}'\]?/) print
+            }' CHANGELOG.md | sed '$ { /^[[:space:]]*$/ d; }')
+            
+            if [[ -n "$CHANGELOG" ]]; then
+              # Save changelog to file and output
+              echo "$CHANGELOG" > release-changelog.md
+              echo "changelog<<EOF" >> $GITHUB_OUTPUT
+              echo "$CHANGELOG" >> $GITHUB_OUTPUT
+              echo "EOF" >> $GITHUB_OUTPUT
+              echo "✅ Changelog extracted"
+            else
+              echo "::warning::No changelog found for version ${{ steps.version.outputs.version }}"
+              echo "changelog=No changelog available." >> $GITHUB_OUTPUT
+            fi
+          else
+            echo "::warning::CHANGELOG.md not found"
+            echo "changelog=No changelog available." >> $GITHUB_OUTPUT
+          fi
+
+      - name: Upload changelog artifact
+        if: hashFiles('release-changelog.md') != ''
+        uses: actions/upload-artifact@v4
+        with:
+          name: changelog
+          path: release-changelog.md
+          retention-days: 30
+
+  # Comprehensive testing before release
+  test-release:
+    name: Test Release Build
+    runs-on: ${{ matrix.os }}
+    needs: validate
+    strategy:
+      fail-fast: true  # Fail fast for releases
+      matrix:
+        include:
+          - os: ubuntu-latest
+            target: x86_64-unknown-linux-gnu
+          - os: windows-latest
+            target: x86_64-pc-windows-msvc
+          - os: macos-13  # Intel
+            target: x86_64-apple-darwin
+          - os: macos-latest  # Apple Silicon
+            target: aarch64-apple-darwin
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.target }}
+
+      - name: Setup Rust cache
+        uses: Swatinem/rust-cache@v2
+        with:
+          cache-on-failure: true
+          key: release-test-${{ matrix.target }}
+
+      - name: Run comprehensive tests
+        run: |
+          # Full test suite
+          cargo test --workspace --all-features --release --target ${{ matrix.target }}
+          
+          # Documentation tests
+          cargo test --workspace --doc --all-features --release
+          
+          # Example tests (if available)
+          if [ -d examples ]; then
+            for example in examples/*.rs; do
+              if [ -f "$example" ]; then
+                echo "Testing example: $(basename $example .rs)"
+                cargo run --example $(basename $example .rs) --release -- --help || true
+              fi
+            done
+          fi
+
+      - name: Verify release build
+        run: |
+          cargo build --workspace --all-features --release --target ${{ matrix.target }}
+          
+          # Get binary name and test it
+          BINARY_NAME=$(grep -E "^name\s*=" Cargo.toml | head -1 | sed 's/name\s*=\s*"\(.*\)"/\1/')
+          
+          if [ "${{ runner.os }}" = "Windows" ]; then
+            BINARY_PATH="target/${{ matrix.target }}/release/${BINARY_NAME}.exe"
+          else
+            BINARY_PATH="target/${{ matrix.target }}/release/${BINARY_NAME}"
+          fi
+          
+          if [ -f "$BINARY_PATH" ]; then
+            ls -la "$BINARY_PATH"
+            echo "Binary size: $(du -h "$BINARY_PATH" | cut -f1)"
+            
+            # Basic smoke test for native builds
+            if [[ "${{ matrix.target }}" == *"$(uname -m)"* ]]; then
+              $BINARY_PATH --version || $BINARY_PATH --help || echo "Binary doesn't support --version/--help"
+            fi
+          else
+            echo "::error::Binary not found at $BINARY_PATH"
+            exit 1
+          fi
+
+  # Security audit for release
+  security-audit:
+    name: Security Audit
+    runs-on: ubuntu-latest
+    needs: validate
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Setup Rust cache
+        uses: Swatinem/rust-cache@v2
+
+      - name: Install security tools
+        run: |
+          cargo install --locked cargo-audit
+          cargo install --locked cargo-deny
+
+      - name: Run comprehensive security audit
+        run: |
+          echo "### Security Audit Results" >> $GITHUB_STEP_SUMMARY
+          
+          # Cargo audit
+          echo "Running cargo-audit..."
+          if cargo audit; then
+            echo "✅ No known vulnerabilities found" >> $GITHUB_STEP_SUMMARY
+          else
+            echo "❌ Security vulnerabilities detected" >> $GITHUB_STEP_SUMMARY
+            echo "::error::Security vulnerabilities found. Release blocked."
+            exit 1
+          fi
+          
+          # Cargo deny
+          if [ ! -f deny.toml ]; then
+            cargo deny init
+          fi
+          
+          echo "Running cargo-deny..."
+          if cargo deny check; then
+            echo "✅ Dependency policy check passed" >> $GITHUB_STEP_SUMMARY
+          else
+            echo "❌ Policy violations found" >> $GITHUB_STEP_SUMMARY
+            echo "::error::Dependency policy violations found."
+            exit 1
+          fi
+
+  # Build release artifacts
+  build-release:
+    name: Build Release ${{ matrix.target }}
+    runs-on: ${{ matrix.runs-on }}
+    needs: [validate, test-release, security-audit]
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          # Primary targets
+          - target: x86_64-unknown-linux-gnu
+            runs-on: ubuntu-latest
+            cross: false
+          - target: aarch64-unknown-linux-gnu
+            runs-on: ubuntu-latest
+            cross: true
+          - target: x86_64-unknown-linux-musl
+            runs-on: ubuntu-latest
+            cross: true
+          - target: aarch64-unknown-linux-musl
+            runs-on: ubuntu-latest
+            cross: true
+          - target: x86_64-apple-darwin
+            runs-on: macos-13
+            cross: false
+          - target: aarch64-apple-darwin
+            runs-on: macos-latest
+            cross: false
+          - target: x86_64-pc-windows-msvc
+            runs-on: windows-latest
+            cross: false
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.target }}
+
+      - name: Setup Rust cache
+        uses: Swatinem/rust-cache@v2
+        with:
+          cache-on-failure: true
+          key: release-${{ matrix.target }}
+
+      - name: Install cross-compilation dependencies
+        if: matrix.cross
+        run: |
+          case "${{ matrix.target }}" in
+            aarch64-unknown-linux-gnu)
+              sudo apt-get update && sudo apt-get install -y gcc-aarch64-linux-gnu
+              echo "CARGO_TARGET_AARCH64_UNKNOWN_LINUX_GNU_LINKER=aarch64-linux-gnu-gcc" >> $GITHUB_ENV
+              ;;
+            *-musl)
+              sudo apt-get update && sudo apt-get install -y musl-tools
+              ;;
+          esac
+
+      - name: Build optimized release
+        run: |
+          # Build with full optimizations for release
+          cargo build \
+            --release \
+            --target ${{ matrix.target }} \
+            --all-features \
+            --config profile.release.lto=true \
+            --config profile.release.codegen-units=1 \
+            --config profile.release.panic='abort'
+
+      - name: Prepare release package
+        shell: bash
+        run: |
+          BINARY_NAME=$(grep -E "^name\s*=" Cargo.toml | head -1 | sed 's/name\s*=\s*"\(.*\)"/\1/')
+          VERSION="${{ needs.validate.outputs.version }}"
+          
+          mkdir -p staging
+          
+          # Copy binary
+          if [ "${{ runner.os }}" = "Windows" ]; then
+            cp "target/${{ matrix.target }}/release/${BINARY_NAME}.exe" staging/
+            ARCHIVE_NAME="${BINARY_NAME}-${VERSION}-${{ matrix.target }}.zip"
+          else
+            cp "target/${{ matrix.target }}/release/${BINARY_NAME}" staging/
+            ARCHIVE_NAME="${BINARY_NAME}-${VERSION}-${{ matrix.target }}.tar.gz"
+          fi
+          
+          # Copy documentation and metadata
+          [ -f README.md ] && cp README.md staging/
+          [ -f LICENSE ] && cp LICENSE staging/
+          [ -f LICENSE-APACHE ] && cp LICENSE-APACHE staging/
+          [ -f LICENSE-MIT ] && cp LICENSE-MIT staging/
+          [ -f CHANGELOG.md ] && cp CHANGELOG.md staging/
+          
+          # Create release metadata
+          cat > staging/RELEASE_INFO.txt << EOF
+          Release Information:
+          - Version: ${VERSION}
+          - Target: ${{ matrix.target }}
+          - Built: $(date -u)
+          - Git Commit: $(git rev-parse HEAD)
+          - Git Tag: ${{ needs.validate.outputs.tag-name }}
+          - Rust Version: $(rustc --version)
+          EOF
+          
+          # Create checksums
+          cd staging
+          if [ "${{ runner.os }}" = "Windows" ]; then
+            certutil -hashfile "${BINARY_NAME}.exe" SHA256 > SHA256SUMS.txt
+          else
+            sha256sum "${BINARY_NAME}" > SHA256SUMS.txt
+          fi
+          cd ..
+          
+          # Create archive
+          if [ "${{ runner.os }}" = "Windows" ]; then
+            7z a "${ARCHIVE_NAME}" ./staging/*
+          else
+            tar czf "${ARCHIVE_NAME}" -C staging .
+          fi
+          
+          echo "ARCHIVE_NAME=${ARCHIVE_NAME}" >> $GITHUB_ENV
+          echo "BINARY_NAME=${BINARY_NAME}" >> $GITHUB_ENV
+
+      - name: Generate build attestation
+        uses: actions/attest-build-provenance@v1
+        with:
+          subject-path: ${{ env.ARCHIVE_NAME }}
+
+      - name: Upload release artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: release-${{ matrix.target }}
+          path: ${{ env.ARCHIVE_NAME }}
+          retention-days: 90
+
+      - name: Build summary
+        run: |
+          echo "### Release Build (${{ matrix.target }})" >> $GITHUB_STEP_SUMMARY
+          echo "- **Version**: ${{ needs.validate.outputs.version }}" >> $GITHUB_STEP_SUMMARY
+          echo "- **Archive**: ${{ env.ARCHIVE_NAME }}" >> $GITHUB_STEP_SUMMARY
+          echo "- **Size**: $(ls -lh '${{ env.ARCHIVE_NAME }}' | awk '{print $5}')" >> $GITHUB_STEP_SUMMARY
+          echo "- **Checksum**: $(cat staging/SHA256SUMS.txt)" >> $GITHUB_STEP_SUMMARY
+
+  # Create GitHub release
+  github-release:
+    name: Create GitHub Release
+    runs-on: ubuntu-latest
+    needs: [validate, build-release]
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Download all release artifacts
+        uses: actions/download-artifact@v4
+        with:
+          pattern: release-*
+          path: artifacts
+          merge-multiple: true
+
+      - name: Download changelog
+        if: hashFiles('artifacts/release-changelog.md') == ''
+        uses: actions/download-artifact@v4
+        with:
+          name: changelog
+          path: artifacts
+        continue-on-error: true
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ needs.validate.outputs.tag-name }}
+          name: Release ${{ needs.validate.outputs.version }}
+          body: ${{ needs.validate.outputs.changelog }}
+          draft: ${{ github.event.inputs.draft == 'true' }}
+          prerelease: ${{ needs.validate.outputs.is-prerelease }}
+          files: artifacts/*
+          generate_release_notes: true
+          make_latest: ${{ needs.validate.outputs.is-prerelease == 'false' }}
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+  # Optional: Publish to crates.io
+  publish-crate:
+    name: Publish to crates.io
+    runs-on: ubuntu-latest
+    needs: [validate, github-release]
+    if: github.event.inputs.publish_crate == 'true' && needs.validate.outputs.is-prerelease == 'false'
+    environment: crates-io  # Use environment protection
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Setup Rust cache
+        uses: Swatinem/rust-cache@v2
+
+      - name: Verify package
+        run: |
+          cargo package --verify
+
+      - name: Publish to crates.io
+        run: |
+          cargo publish --token ${{ secrets.CRATES_IO_TOKEN }}
+        env:
+          CARGO_REGISTRY_TOKEN: ${{ secrets.CRATES_IO_TOKEN }}
+
+      - name: Publish summary
+        run: |
+          echo "### ✅ Published to crates.io" >> $GITHUB_STEP_SUMMARY
+          echo "Package: ${{ env.BINARY_NAME }} v${{ needs.validate.outputs.version }}" >> $GITHUB_STEP_SUMMARY
+          echo "Install: \`cargo install ${{ env.BINARY_NAME }}\`" >> $GITHUB_STEP_SUMMARY
+
+  # Final release summary
+  release-summary:
+    name: Release Summary
+    runs-on: ubuntu-latest
+    needs: [validate, test-release, security-audit, build-release, github-release]
+    if: always()
+
+    steps:
+      - name: Generate release summary
+        run: |
+          echo "# 🚀 Release ${{ needs.validate.outputs.version }}" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "## Release Information" >> $GITHUB_STEP_SUMMARY
+          echo "- **Version**: ${{ needs.validate.outputs.version }}" >> $GITHUB_STEP_SUMMARY
+          echo "- **Tag**: ${{ needs.validate.outputs.tag-name }}" >> $GITHUB_STEP_SUMMARY
+          echo "- **Prerelease**: ${{ needs.validate.outputs.is-prerelease }}" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "## Build Results" >> $GITHUB_STEP_SUMMARY
+          echo "| Stage | Status |" >> $GITHUB_STEP_SUMMARY
+          echo "|-------|--------|" >> $GITHUB_STEP_SUMMARY
+          echo "| Validation | ${{ needs.validate.result }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| Testing | ${{ needs.test-release.result }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| Security | ${{ needs.security-audit.result }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| Build | ${{ needs.build-release.result }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| GitHub Release | ${{ needs.github-release.result }} |" >> $GITHUB_STEP_SUMMARY
+          
+          # Overall status
+          if [[ "${{ needs.github-release.result }}" == "success" ]]; then
+            echo "" >> $GITHUB_STEP_SUMMARY
+            echo "✅ **Release completed successfully!**" >> $GITHUB_STEP_SUMMARY
+            echo "🔗 [View Release](https://github.com/${{ github.repository }}/releases/tag/${{ needs.validate.outputs.tag-name }})" >> $GITHUB_STEP_SUMMARY
+          else
+            echo "" >> $GITHUB_STEP_SUMMARY
+            echo "❌ **Release failed.**" >> $GITHUB_STEP_SUMMARY
+            exit 1
+          fi

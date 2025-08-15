@@ -1,0 +1,393 @@
+---
+# Comprehensive CI pipeline for Rust projects
+# Runs on push to main and pull requests
+# Includes testing, linting, security scanning, and cross-platform validation
+name: CI
+
+on:
+  push:
+    branches: [main, develop]
+  pull_request:
+    branches: [main, develop]
+  schedule:
+    # Run nightly to catch regressions from dependency updates
+    - cron: '0 2 * * *'
+
+env:
+  CARGO_TERM_COLOR: always
+  CARGO_INCREMENTAL: 0
+  RUST_BACKTRACE: short
+  # Fail fast on Cargo.lock changes
+  CARGO_NET_RETRY: 10
+
+jobs:
+  # Job 1: Code Quality and Linting
+  lint:
+    name: Lint and Format Check
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt, clippy
+
+      - name: Setup Rust cache
+        uses: Swatinem/rust-cache@v2
+        with:
+          cache-on-failure: true
+          key: lint
+
+      - name: Check code formatting
+        run: cargo fmt --all -- --check
+
+      - name: Run Clippy (pedantic)
+        run: |
+          cargo clippy --workspace --all-targets --all-features -- \
+            -D warnings \
+            -W clippy::pedantic \
+            -W clippy::nursery \
+            -W clippy::cargo
+
+      - name: Check documentation
+        run: cargo doc --workspace --all-features --no-deps --document-private-items
+        env:
+          RUSTDOCFLAGS: "-D warnings -D rustdoc::broken_intra_doc_links"
+
+      - name: Verify no uncommitted changes
+        run: |
+          if ! git diff --exit-code; then
+            echo "::error::Uncommitted changes detected after linting"
+            exit 1
+          fi
+
+  # Job 2: Comprehensive Testing Matrix
+  test:
+    name: Test Rust ${{ matrix.rust }} on ${{ matrix.os }} (${{ matrix.target }})
+    runs-on: ${{ matrix.runs-on }}
+    needs: lint
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          # Stable toolchain - primary targets
+          - rust: stable
+            os: linux
+            runs-on: ubuntu-latest
+            target: x86_64-unknown-linux-gnu
+            features: default
+          - rust: stable
+            os: windows
+            runs-on: windows-latest
+            target: x86_64-pc-windows-msvc
+            features: default
+          - rust: stable
+            os: macos-intel
+            runs-on: macos-13
+            target: x86_64-apple-darwin
+            features: default
+          - rust: stable
+            os: macos-arm
+            runs-on: macos-latest
+            target: aarch64-apple-darwin
+            features: default
+
+          # MSRV (Minimum Supported Rust Version)
+          - rust: 1.70.0  # Adjust based on your MSRV
+            os: linux
+            runs-on: ubuntu-latest
+            target: x86_64-unknown-linux-gnu
+            features: minimal
+
+          # Beta/Nightly for early warning
+          - rust: beta
+            os: linux
+            runs-on: ubuntu-latest
+            target: x86_64-unknown-linux-gnu
+            features: default
+            allow-failure: true
+          - rust: nightly
+            os: linux
+            runs-on: ubuntu-latest
+            target: x86_64-unknown-linux-gnu
+            features: all
+            allow-failure: true
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: ${{ matrix.rust }}
+          targets: ${{ matrix.target }}
+
+      - name: Setup Rust cache
+        uses: Swatinem/rust-cache@v2
+        with:
+          cache-on-failure: true
+          key: ${{ matrix.os }}-${{ matrix.rust }}-${{ matrix.target }}
+
+      - name: Install system dependencies (Linux)
+        if: matrix.os == 'linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y build-essential
+
+      - name: Configure feature flags
+        id: features
+        run: |
+          case "${{ matrix.features }}" in
+            minimal) echo "flags=--no-default-features" >> $GITHUB_OUTPUT ;;
+            default) echo "flags=--all-features" >> $GITHUB_OUTPUT ;;
+            all) echo "flags=--all-features" >> $GITHUB_OUTPUT ;;
+          esac
+
+      - name: Check compilation
+        run: cargo check --workspace --target ${{ matrix.target }} ${{ steps.features.outputs.flags }}
+
+      - name: Run tests
+        run: |
+          cargo test --workspace --target ${{ matrix.target }} ${{ steps.features.outputs.flags }} --verbose
+        continue-on-error: ${{ matrix.allow-failure || false }}
+
+      - name: Run doctests
+        if: matrix.rust == 'stable' && matrix.features != 'minimal'
+        run: cargo test --workspace --doc ${{ steps.features.outputs.flags }}
+        continue-on-error: ${{ matrix.allow-failure || false }}
+
+      - name: Generate test report
+        if: always()
+        run: |
+          echo "## Test Results (${{ matrix.os }}, ${{ matrix.rust }})" >> $GITHUB_STEP_SUMMARY
+          echo "- Target: ${{ matrix.target }}" >> $GITHUB_STEP_SUMMARY
+          echo "- Features: ${{ matrix.features }}" >> $GITHUB_STEP_SUMMARY
+          echo "- Status: ${{ job.status }}" >> $GITHUB_STEP_SUMMARY
+
+  # Job 3: Security Scanning
+  security:
+    name: Security Audit
+    runs-on: ubuntu-latest
+    needs: lint
+    permissions:
+      security-events: write
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Setup Rust cache
+        uses: Swatinem/rust-cache@v2
+        with:
+          cache-on-failure: true
+          key: security
+
+      - name: Install security tools
+        run: |
+          cargo install --locked cargo-audit
+          cargo install --locked cargo-deny
+
+      - name: Run cargo audit
+        run: |
+          cargo audit --json --format json > audit-report.json || true
+          echo "### Security Audit Results" >> $GITHUB_STEP_SUMMARY
+          cargo audit || echo "::warning::Security vulnerabilities found"
+
+      - name: Run cargo deny
+        run: |
+          # Initialize cargo-deny if config doesn't exist
+          if [ ! -f deny.toml ]; then
+            cargo deny init
+          fi
+          cargo deny --format json check > deny-report.json || true
+          echo "### Dependency Policy Check" >> $GITHUB_STEP_SUMMARY  
+          cargo deny check || echo "::warning::Policy violations found"
+
+      - name: Upload security reports
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: security-reports
+          path: |
+            audit-report.json
+            deny-report.json
+          retention-days: 30
+
+  # Job 4: Cross-compilation Testing
+  cross-compile:
+    name: Cross-compile ${{ matrix.target }}
+    runs-on: ubuntu-latest
+    needs: [test, security]
+    strategy:
+      fail-fast: false
+      matrix:
+        target:
+          - aarch64-unknown-linux-gnu
+          - armv7-unknown-linux-gnueabihf
+          - x86_64-unknown-linux-musl
+          - aarch64-unknown-linux-musl
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.target }}
+
+      - name: Setup Rust cache
+        uses: Swatinem/rust-cache@v2
+        with:
+          cache-on-failure: true
+          key: cross-${{ matrix.target }}
+
+      - name: Install cross-compilation dependencies
+        run: |
+          sudo apt-get update
+          case "${{ matrix.target }}" in
+            aarch64-unknown-linux-gnu)
+              sudo apt-get install -y gcc-aarch64-linux-gnu
+              ;;
+            armv7-unknown-linux-gnueabihf)
+              sudo apt-get install -y gcc-arm-linux-gnueabihf
+              ;;
+            *-musl)
+              sudo apt-get install -y musl-tools
+              ;;
+          esac
+
+      - name: Configure cross-compilation
+        run: |
+          case "${{ matrix.target }}" in
+            aarch64-unknown-linux-gnu)
+              echo "CARGO_TARGET_AARCH64_UNKNOWN_LINUX_GNU_LINKER=aarch64-linux-gnu-gcc" >> $GITHUB_ENV
+              ;;
+            armv7-unknown-linux-gnueabihf)
+              echo "CARGO_TARGET_ARMV7_UNKNOWN_LINUX_GNUEABIHF_LINKER=arm-linux-gnueabihf-gcc" >> $GITHUB_ENV
+              ;;
+          esac
+
+      - name: Cross-compile
+        run: cargo build --release --target ${{ matrix.target }} --all-features
+
+      - name: Upload cross-compiled artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: cross-${{ matrix.target }}
+          path: target/${{ matrix.target }}/release/
+          retention-days: 7
+
+  # Job 5: Performance Benchmarks (Optional)
+  benchmark:
+    name: Performance Benchmarks
+    runs-on: ubuntu-latest
+    needs: test
+    if: github.event_name != 'pull_request' # Only on main branch
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Setup Rust cache
+        uses: Swatinem/rust-cache@v2
+
+      - name: Run benchmarks
+        run: |
+          # Add criterion or other benchmarking if available
+          if [ -d "benches" ] || grep -q "criterion" Cargo.toml; then
+            cargo bench --all-features > benchmark-results.txt 2>&1
+            echo "### Benchmark Results" >> $GITHUB_STEP_SUMMARY
+            echo '```' >> $GITHUB_STEP_SUMMARY
+            tail -20 benchmark-results.txt >> $GITHUB_STEP_SUMMARY
+            echo '```' >> $GITHUB_STEP_SUMMARY
+          else
+            echo "No benchmarks configured" >> $GITHUB_STEP_SUMMARY
+          fi
+
+      - name: Upload benchmark results
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: benchmark-results
+          path: benchmark-results.txt
+          retention-days: 90
+
+  # Job 6: Coverage Analysis
+  coverage:
+    name: Code Coverage
+    runs-on: ubuntu-latest
+    needs: test
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          components: llvm-tools-preview
+
+      - name: Setup Rust cache
+        uses: Swatinem/rust-cache@v2
+
+      - name: Install cargo-llvm-cov
+        run: cargo install --locked cargo-llvm-cov
+
+      - name: Generate coverage report
+        run: |
+          cargo llvm-cov --workspace --all-features --lcov --output-path lcov.info
+          cargo llvm-cov report --html --output-dir coverage-html
+
+      - name: Upload coverage to Codecov
+        uses: codecov/codecov-action@v4
+        with:
+          files: lcov.info
+          fail_ci_if_error: false
+
+      - name: Upload coverage artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: coverage-report
+          path: |
+            lcov.info
+            coverage-html/
+          retention-days: 30
+
+  # Job 7: CI Summary
+  ci-summary:
+    name: CI Summary
+    runs-on: ubuntu-latest
+    needs: [lint, test, security, cross-compile, coverage]
+    if: always()
+    steps:
+      - name: Generate CI summary
+        run: |
+          echo "# CI Pipeline Results" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "| Job | Status |" >> $GITHUB_STEP_SUMMARY
+          echo "|-----|--------|" >> $GITHUB_STEP_SUMMARY
+          echo "| Lint | ${{ needs.lint.result }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| Test | ${{ needs.test.result }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| Security | ${{ needs.security.result }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| Cross-compile | ${{ needs.cross-compile.result }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| Coverage | ${{ needs.coverage.result }} |" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          
+          # Set overall status
+          if [[ "${{ needs.lint.result }}" == "success" && 
+                "${{ needs.test.result }}" == "success" && 
+                "${{ needs.security.result }}" == "success" ]]; then
+            echo "✅ **CI Pipeline: SUCCESS**" >> $GITHUB_STEP_SUMMARY
+            echo "status=success" >> $GITHUB_OUTPUT
+          else
+            echo "❌ **CI Pipeline: FAILED**" >> $GITHUB_STEP_SUMMARY
+            echo "status=failure" >> $GITHUB_OUTPUT
+            exit 1
+          fi
