@@ -22,7 +22,7 @@ fn generate_man_page(cmd: &clap::Command) {
     fs::create_dir_all(out_dir).unwrap();
 
     let man = Man::new(cmd.clone());
-    let mut buffer: Vec<u8> = Default::default();
+    let mut buffer: Vec<u8> = Vec::default();
     man.render(&mut buffer).unwrap();
 
     fs::write(Path::new(out_dir).join("rucat.1"), buffer).unwrap();
