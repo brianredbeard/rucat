@@ -259,39 +259,11 @@ jobs:
           cache-on-failure: true
           key: cross-${{ matrix.target }}
 
-      - name: Install cross-compilation dependencies
-        run: |
-          sudo apt-get update
-          case "${{ matrix.target }}" in
-            aarch64-unknown-linux-gnu)
-              sudo apt-get install -y gcc-aarch64-linux-gnu
-              ;;
-            armv7-unknown-linux-gnueabihf)
-              sudo apt-get install -y gcc-arm-linux-gnueabihf
-              ;;
-            aarch64-unknown-linux-musl)
-              curl -O "https://musl.cc/aarch64-linux-musl-cross.tgz"
-              tar -xzf aarch64-linux-musl-cross.tgz
-              echo "$(pwd)/aarch64-linux-musl-cross/bin" >> $GITHUB_PATH
-              ;;
-            x86_64-unknown-linux-musl)
-              sudo apt-get install -y musl-tools
-              ;;
-          esac
-
-      - name: Configure cross-compilation
-        run: |
-          case "${{ matrix.target }}" in
-            aarch64-unknown-linux-gnu)
-              echo "CARGO_TARGET_AARCH64_UNKNOWN_LINUX_GNU_LINKER=aarch64-linux-gnu-gcc" >> $GITHUB_ENV
-              ;;
-            armv7-unknown-linux-gnueabihf)
-              echo "CARGO_TARGET_ARMV7_UNKNOWN_LINUX_GNUEABIHF_LINKER=arm-linux-gnueabihf-gcc" >> $GITHUB_ENV
-              ;;
-          esac
+      - name: Install cross
+        run: cargo install cross --git https://github.com/cross-rs/cross
 
       - name: Cross-compile
-        run: cargo build --release --target ${{ matrix.target }} --all-features
+        run: cross build --release --target ${{ matrix.target }} --all-features
 
       - name: Upload cross-compiled artifacts
         uses: actions/upload-artifact@v4

@@ -308,25 +308,24 @@ jobs:
           cache-on-failure: true
           key: release-${{ matrix.target }}
 
-      - name: Install cross-compilation dependencies
+      - name: Install cross
+        if: matrix.cross
+        run: cargo install cross --git https://github.com/cross-rs/cross
+
+      - name: Build optimized release (cross-compile)
         if: matrix.cross
         run: |
-          case "${{ matrix.target }}" in
-            aarch64-unknown-linux-gnu)
-              sudo apt-get update && sudo apt-get install -y gcc-aarch64-linux-gnu
-              echo "CARGO_TARGET_AARCH64_UNKNOWN_LINUX_GNU_LINKER=aarch64-linux-gnu-gcc" >> $GITHUB_ENV
-              ;;
-            aarch64-unknown-linux-musl)
-              curl -O "https://musl.cc/aarch64-linux-musl-cross.tgz"
-              tar -xzf aarch64-linux-musl-cross.tgz
-              echo "$(pwd)/aarch64-linux-musl-cross/bin" >> $GITHUB_PATH
-              ;;
-            *-musl) # Catches x86_64-unknown-linux-musl
-              sudo apt-get update && sudo apt-get install -y musl-tools
-              ;;
-          esac
+          # Build with full optimizations for release
+          cross build \
+            --release \
+            --target ${{ matrix.target }} \
+            --all-features \
+            --config profile.release.lto=true \
+            --config profile.release.codegen-units=1 \
+            --config profile.release.panic='abort'
 
-      - name: Build optimized release
+      - name: Build optimized release (native)
+        if: ${{ !matrix.cross }}
         run: |
           # Build with full optimizations for release
           cargo build \
