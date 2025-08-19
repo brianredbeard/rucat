@@ -175,7 +175,7 @@ jobs:
           cargo test --workspace --all-features --release --target ${{ matrix.target }}
           
           # Documentation tests
-          cargo test --workspace --doc --all-features --release
+          cargo test --workspace --doc --all-features --release  --target ${{ matrix.target }}
           
           # Example tests (if available)
           if [ -d examples ]; then
@@ -188,6 +188,7 @@ jobs:
           fi
 
       - name: Verify release build
+        shell: bash
         run: |
           cargo build --workspace --all-features --release --target ${{ matrix.target }}
           
@@ -205,7 +206,12 @@ jobs:
             echo "Binary size: $(du -h "$BINARY_PATH" | cut -f1)"
             
             # Basic smoke test for native builds
-            if [[ "${{ matrix.target }}" == *"$(uname -m)"* ]]; then
+            # Normalize arch: uname -m on macOS aarch64 is "arm64"
+            NATIVE_ARCH=$(uname -m)
+            if [[ "$NATIVE_ARCH" == "arm64" ]]; then
+              NATIVE_ARCH="aarch64"
+            fi
+            if [[ "${{ matrix.target }}" == *"$NATIVE_ARCH"* ]]; then
               $BINARY_PATH --version || $BINARY_PATH --help || echo "Binary doesn't support --version/--help"
             fi
           else
