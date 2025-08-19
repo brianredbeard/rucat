@@ -134,22 +134,20 @@ impl Args {
         }
     }
 
+    #[cfg(feature = "clipboard")]
     #[allow(clippy::missing_const_for_fn)] // False positive: function mutates args
-    #[allow(clippy::unnecessary_wraps)] // Needed for cfg-dependent error handling
-    fn handle_copy_flag(args: &mut Self, arg: &str, i: &mut usize) -> Result<bool, String> {
-        #[cfg(feature = "clipboard")]
-        {
-            let _ = arg; // Suppress unused variable warning
-            args.copy = true;
-            *i += 1;
-            Ok(true)
-        }
-        #[cfg(not(feature = "clipboard"))]
-        {
-            Err(format!(
-                "The '{arg}' flag requires the 'clipboard' feature to be enabled"
-            ))
-        }
+    #[allow(clippy::unnecessary_wraps)] // Must match signature of other cfg branch
+    fn handle_copy_flag(args: &mut Self, _arg: &str, i: &mut usize) -> Result<bool, String> {
+        args.copy = true;
+        *i += 1;
+        Ok(true)
+    }
+
+    #[cfg(not(feature = "clipboard"))]
+    fn handle_copy_flag(_args: &mut Self, arg: &str, _i: &mut usize) -> Result<bool, String> {
+        Err(format!(
+            "The '{arg}' flag requires the 'clipboard' feature to be enabled"
+        ))
     }
 
     fn handle_format_flag(
