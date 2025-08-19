@@ -169,6 +169,7 @@ jobs:
           key: release-test-${{ matrix.target }}
 
       - name: Run comprehensive tests
+        shell: bash
         run: |
           # Full test suite
           cargo test --workspace --all-features --release --target ${{ matrix.target }}
@@ -403,6 +404,7 @@ jobs:
           retention-days: 90
 
       - name: Build summary
+        shell: bash
         run: |
           echo "### Release Build (${{ matrix.target }})" >> $GITHUB_STEP_SUMMARY
           echo "- **Version**: ${{ needs.validate.outputs.version }}" >> $GITHUB_STEP_SUMMARY
