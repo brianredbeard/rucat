@@ -297,7 +297,7 @@ jobs:
         shell: bash
         run: |
           # Find the binary name from Cargo.toml
-          BINARY_NAME=$(grep -E "^name\s*=" Cargo.toml | head -1 | sed 's/name\s*=\s*"\(.*\)"/\1/')
+          BINARY_NAME=$(grep '^name *=' Cargo.toml | head -1 | cut -d '"' -f 2)
           
           if [ "${{ runner.os }}" = "Windows" ]; then
             BINARY_PATH="target/${{ matrix.target }}/${{ needs.setup.outputs.build-profile }}/${BINARY_NAME}.exe"
