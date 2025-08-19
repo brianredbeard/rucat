@@ -1,0 +1,67 @@
+.ie \n(.g .ds Aq \(aq
+.el .ds Aq '
+.TH rucat 1  "rucat 0.2.0" 
+.SH NAME
+rucat \- rucat is \*(Aqcat\*(Aq reborn for the era of LLMs. A critical tool for every prompt engineer.
+.SH SYNOPSIS
+\fBrucat\fR [\fB\-f\fR|\fB\-\-format\fR] [\fB\-\-ansi\-width\fR] [\fB\-\-utf8\-width\fR] [\fB\-n\fR|\fB\-\-numbers\fR] [\fB\-0\fR|\fB\-\-null\fR] [\fB\-\-strip\fR] [\fB\-\-pretty\-syntax\fR] [\fB\-c\fR|\fB\-\-copy\fR] [\fB\-h\fR|\fB\-\-help\fR] [\fB\-V\fR|\fB\-\-version\fR] [\fIFILES...\fR] 
+.SH DESCRIPTION
+rucat is \*(Aqcat\*(Aq reborn for the era of LLMs. A critical tool for every prompt engineer.
+.SH OPTIONS
+.TP
+\fB\-f\fR, \fB\-\-format\fR \fI<FORMAT>\fR
+Output format
+.br
+
+.br
+\fIPossible values:\fR
+.RS 14
+.IP \(bu 2
+ansi: ANSI box drawing characters
+.IP \(bu 2
+xml: XML format
+.IP \(bu 2
+json: JSON format
+.IP \(bu 2
+markdown: Markdown code blocks
+.IP \(bu 2
+ascii: Simple ASCII header
+.IP \(bu 2
+utf8: Fancy UTF\-8 box drawing
+.IP \(bu 2
+pretty: Pretty\-printed with syntax highlighting
+.RE
+.TP
+\fB\-\-ansi\-width\fR \fI<ANSI_WIDTH>\fR
+Width for ANSI formatting (excluding borders)
+.TP
+\fB\-\-utf8\-width\fR \fI<UTF8_WIDTH>\fR
+Width for UTF8 formatting (excluding borders)
+.TP
+\fB\-n\fR, \fB\-\-numbers\fR
+Add a gutter with line numbers
+.TP
+\fB\-0\fR, \fB\-\-null\fR
+Read NUL\-terminated file list from STDIN (like `xargs \-0`)
+.TP
+\fB\-\-strip\fR \fI<N>\fR
+Remove N leading path components when printing filenames
+.TP
+\fB\-\-pretty\-syntax\fR \fI<PRETTY_SYNTAX>\fR
+Explicitly set the syntax for the \*(Aqpretty\*(Aq formatter
+.TP
+\fB\-c\fR, \fB\-\-copy\fR
+Copy output to the system clipboard
+.TP
+\fB\-h\fR, \fB\-\-help\fR
+Print help (see a summary with \*(Aq\-h\*(Aq)
+.TP
+\fB\-V\fR, \fB\-\-version\fR
+Print version
+.TP
+[\fIFILES...\fR]
+Files to process (options like \-c/\-\-copy can appear after files)
+.SH VERSION
+v0.2.0
+.SH AUTHORS
+Brian \*(Aqredbeard\*(Aq Harrington <redbeard@dead\-city.org>
