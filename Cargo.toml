@@ -36,6 +36,7 @@ path = "src/lib.rs"
 
 [features]
 default = []
+clipboard = []
 basic = []
 full = []
 
@@ -48,6 +49,7 @@ anyhow = "1.0"
 walkdir = "2"
 regex = "1.11.1"
 syntect = { version = "5.2.0", features = ["default-fancy"] }
+base64 = "0.22"
 
 [dependencies.dirs]
 version = "6.0"

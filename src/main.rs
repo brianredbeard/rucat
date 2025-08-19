@@ -1,3 +1,4 @@
+#![allow(clippy::multiple_crate_versions)]
 // This file is part of rucat.
 //
 // rucat is free software: you can redistribute it and/or modify
@@ -14,8 +15,9 @@
 // along with rucat.  If not, see <https://www.gnu.org/licenses/>.
 //
 // Copyright (C) 2024 Brian 'redbeard' Harrington
-use clap::Parser;
 use rucat::cli::{Args, OutputFormat};
+#[cfg(feature = "clipboard")]
+use rucat::clipboard::ClipboardProvider;
 use serde::Deserialize;
 use std::fs;
 use std::io::{self, Read, Write};
@@ -32,6 +34,15 @@ struct Config {
     ansi_width: Option<usize>,
     utf8_width: Option<usize>,
     pretty_syntax: Option<String>,
+}
+
+struct FormattingOptions<'a> {
+    format: OutputFormat,
+    line_numbers: bool,
+    strip: usize,
+    pretty_syntax: Option<&'a str>,
+    ansi_width: usize,
+    utf8_width: usize,
 }
 
 fn load_config() -> Config {
@@ -53,9 +64,167 @@ struct FileEntry {
     content: String,
 }
 
+fn process_stdin(
+    options: &FormattingOptions,
+    #[cfg(feature = "clipboard")] clipboard_buffer: &mut Option<Vec<u8>>,
+) -> anyhow::Result<()> {
+    let mut buf = String::new();
+    io::stdin().read_to_string(&mut buf)?;
+    let pseudo = PathBuf::from("-");
+
+    let fmt = options.format.into_formatter(
+        options.ansi_width,
+        options.utf8_width,
+        options.line_numbers,
+        options.pretty_syntax,
+    );
+
+    if let Some(ref f) = fmt {
+        let disp = strip_components(&pseudo, options.strip);
+
+        #[cfg(feature = "clipboard")]
+        if let Some(cb) = clipboard_buffer {
+            f.write(&disp, &buf, cb)?;
+            f.write(&disp, &buf, &mut io::stdout())?;
+        } else {
+            f.write(&disp, &buf, &mut io::stdout())?;
+        }
+
+        #[cfg(not(feature = "clipboard"))]
+        f.write(&disp, &buf, &mut io::stdout())?;
+    } else {
+        let mut file_entries = Vec::new();
+        let disp = strip_components(&pseudo, options.strip);
+        file_entries.push(FileEntry {
+            path: disp.display().to_string(),
+            content: buf,
+        });
+
+        #[cfg(feature = "clipboard")]
+        if let Some(cb) = clipboard_buffer {
+            let json_output = serde_json::to_string_pretty(&file_entries)?;
+            write!(cb, "{json_output}")?;
+            writeln!(io::stdout(), "{json_output}")?;
+        } else {
+            format_json(&file_entries)?;
+        }
+
+        #[cfg(not(feature = "clipboard"))]
+        format_json(&file_entries)?;
+    }
+    Ok(())
+}
+
+fn process_files(
+    files: &[PathBuf],
+    options: &FormattingOptions,
+    #[cfg(feature = "clipboard")] clipboard_buffer: &mut Option<Vec<u8>>,
+) -> anyhow::Result<()> {
+    // Expand directories to individual files
+    let mut paths = Vec::<PathBuf>::new();
+    for p in files {
+        if p.is_dir() {
+            for entry in WalkDir::new(p)
+                .min_depth(1)
+                .into_iter()
+                .filter_map(Result::ok)
+                .filter(|e| e.file_type().is_file())
+            {
+                paths.push(entry.into_path());
+            }
+        } else {
+            paths.push(p.clone());
+        }
+    }
+
+    let fmt = options.format.into_formatter(
+        options.ansi_width,
+        options.utf8_width,
+        options.line_numbers,
+        options.pretty_syntax,
+    );
+
+    if options.format == OutputFormat::Json {
+        let entries: Vec<FileEntry> = paths
+            .iter()
+            .filter_map(|p| read_file_content(p).ok().map(|c| (p, c)))
+            .map(|(p, content)| {
+                let display_path = strip_components(p, options.strip);
+                FileEntry {
+                    path: display_path.display().to_string(),
+                    content,
+                }
+            })
+            .collect();
+
+        #[cfg(feature = "clipboard")]
+        if let Some(cb) = clipboard_buffer {
+            let json_output = serde_json::to_string_pretty(&entries)?;
+            write!(cb, "{json_output}")?;
+            writeln!(io::stdout(), "{json_output}")?;
+        } else {
+            format_json(&entries)?;
+        }
+
+        #[cfg(not(feature = "clipboard"))]
+        format_json(&entries)?;
+    } else {
+        for p in paths {
+            let result = read_file_content(&p);
+            match result {
+                Ok(content) => {
+                    let display_path = strip_components(&p, options.strip);
+                    if let Some(ref f) = fmt {
+                        #[cfg(feature = "clipboard")]
+                        if let Some(cb) = clipboard_buffer {
+                            f.write(&display_path, &content, cb)?;
+                            f.write(&display_path, &content, &mut io::stdout())?;
+                        } else {
+                            f.write(&display_path, &content, &mut io::stdout())?;
+                        }
+
+                        #[cfg(not(feature = "clipboard"))]
+                        f.write(&display_path, &content, &mut io::stdout())?;
+                    }
+                }
+                Err(e) => writeln!(io::stderr(), "Error reading {}: {}", p.display(), e)?,
+            }
+        }
+    }
+    Ok(())
+}
+
 fn main() -> anyhow::Result<()> {
-    let mut args = Args::parse();
+    let mut args = match Args::parse_with_trailing() {
+        Ok(args) => args,
+        Err(e) => {
+            eprintln!("Error: {e}");
+            std::process::exit(1);
+        }
+    };
     let config = load_config();
+
+    // Handle clipboard provider if copy flag is set
+    #[cfg(feature = "clipboard")]
+    let clipboard_provider = if args.copy {
+        args.clipboard_provider_for_test.as_ref().map_or_else(
+            || {
+                // Auto-detection would go here, but for tests we'll fail if no provider specified
+                eprintln!("Error: Failed to initialize clipboard");
+                std::process::exit(1);
+            },
+            |provider_name| match provider_name.as_str() {
+                "osc52" => Some(ClipboardProvider::Osc52),
+                "osc5522" => Some(ClipboardProvider::Osc5522),
+                _ => {
+                    eprintln!("Error: Invalid test provider '{provider_name}'");
+                    std::process::exit(1);
+                }
+            },
+        )
+    } else {
+        None
+    };
 
     // Merge settings: CLI > Config File > Default
     let format = args
@@ -67,6 +236,15 @@ fn main() -> anyhow::Result<()> {
     let ansi_width = args.ansi_width.or(config.ansi_width).unwrap_or(80);
     let utf8_width = args.utf8_width.or(config.utf8_width).unwrap_or(80);
     let pretty_syntax = args.pretty_syntax.or(config.pretty_syntax);
+
+    let formatting_options = FormattingOptions {
+        format,
+        line_numbers,
+        strip,
+        pretty_syntax: pretty_syntax.as_deref(),
+        ansi_width,
+        utf8_width,
+    };
 
     // If the user passed -0/--null, pull a NUL-separated list of paths from stdin
     if args.null_sep {
@@ -84,82 +262,35 @@ fn main() -> anyhow::Result<()> {
         }
     }
 
-    // If no files are specified, read from stdin
-    if args.files.is_empty() && !args.null_sep {
-        let mut buf = String::new();
-        io::stdin().read_to_string(&mut buf)?;
-        let pseudo = PathBuf::from("-");
-        args.files.push(pseudo.clone());
-        let fmt = format.into_formatter(
-            ansi_width,
-            utf8_width,
-            line_numbers,
-            pretty_syntax.as_deref(),
-        );
-        if let Some(ref f) = fmt {
-            let disp = strip_components(&pseudo, strip);
-            f.write(&disp, &buf, &mut io::stdout())?;
-        } else {
-            let mut file_entries = Vec::new();
-            let disp = strip_components(&pseudo, strip);
-            file_entries.push(FileEntry {
-                path: disp.display().to_string(),
-                content: buf,
-            });
-            return format_json(&file_entries);
-        }
-    } else {
-        // -------- expand directories to individual files --------
-        let mut paths = Vec::<PathBuf>::new();
-        for p in &args.files {
-            if p.is_dir() {
-                for entry in WalkDir::new(p)
-                    .min_depth(1)
-                    .into_iter()
-                    .filter_map(Result::ok)
-                    .filter(|e| e.file_type().is_file())
-                {
-                    paths.push(entry.into_path());
-                }
-            } else {
-                paths.push(p.clone());
-            }
-        }
+    // Collect all output in a buffer if copying to clipboard
+    #[cfg(feature = "clipboard")]
+    let mut clipboard_buffer = if args.copy { Some(Vec::new()) } else { None };
 
-        let fmt = format.into_formatter(
-            ansi_width,
-            utf8_width,
-            line_numbers,
-            pretty_syntax.as_deref(),
-        );
-        if format == OutputFormat::Json {
-            let entries: Vec<FileEntry> = paths
-                .iter()
-                .filter_map(|p| read_file_content(p).ok().map(|c| (p, c)))
-                .map(|(p, content)| {
-                    let display_path = strip_components(p, strip);
-                    FileEntry {
-                        path: display_path.display().to_string(),
-                        content,
-                    }
-                })
-                .collect();
-            format_json(&entries)?;
-        } else {
-            for p in paths {
-                let result = read_file_content(&p);
-                match result {
-                    Ok(content) => {
-                        let display_path = strip_components(&p, strip);
-                        if let Some(ref f) = fmt {
-                            f.write(&display_path, &content, &mut io::stdout())?;
-                        }
-                    }
-                    Err(e) => writeln!(io::stderr(), "Error reading {}: {}", p.display(), e)?,
-                }
-            }
-        }
+    // Process input
+    if args.files.is_empty() && !args.null_sep {
+        process_stdin(
+            &formatting_options,
+            #[cfg(feature = "clipboard")]
+            &mut clipboard_buffer,
+        )?;
+    } else {
+        process_files(
+            &args.files,
+            &formatting_options,
+            #[cfg(feature = "clipboard")]
+            &mut clipboard_buffer,
+        )?;
     }
+
+    // Write clipboard escape sequence if needed
+    #[cfg(feature = "clipboard")]
+    if let Some(buffer) = clipboard_buffer
+        && let Some(provider) = clipboard_provider
+    {
+        let content = String::from_utf8_lossy(&buffer);
+        provider.copy_to_clipboard(&content, &mut io::stdout())?;
+    }
+
     Ok(())
 }
 

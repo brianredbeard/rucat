@@ -1,3 +1,4 @@
+#![allow(clippy::multiple_crate_versions)]
 // This file is part of rucat.
 //
 // rucat is free software: you can redistribute it and/or modify
@@ -16,6 +17,8 @@
 // Copyright (C) 2024 Brian 'redbeard' Harrington
 // Re-export everything tests need
 pub mod cli;
+#[cfg(feature = "clipboard")]
+pub mod clipboard;
 pub mod formatters;
 
 use crate::cli::OutputFormat;
