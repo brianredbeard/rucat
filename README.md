@@ -6,9 +6,9 @@
 engineer.
 
 Written in Rust. It goes beyond simple file concatenation, offering multiple
-output formats, line numbering, and syntax-aware formatting, making it an ideal
-tool for developers, system administrators, and anyone working with code or text
-files in the terminal.
+output formats, line numbering, syntax-aware formatting, and clipboard support,
+making it an ideal tool for developers, system administrators, and anyone working
+with code or text files in the terminal.
 
 ## Powering AI and Development Workflows
 
@@ -26,6 +26,9 @@ AI with the full state of your repository's refs and logs, you can run:
 ```bash
 # Quickly gather all relevant git state files into one block
 $ rucat .git/{HEAD,config,info/exclude,logs/HEAD,logs/refs/heads/*}
+
+# Or copy directly to clipboard for pasting into AI chat
+$ rucat --copy .git/{HEAD,config,info/exclude,logs/HEAD,logs/refs/heads/*}
 ```
 
 ````
@@ -92,7 +95,7 @@ AI chat, delivering complete and unambiguous context in seconds. This makes
   - `ansi`: Nicely formatted with borders (width-configurable via
     `--ansi-width`).
   - `utf8`: Fancy UTF-8 box-drawing borders (width-configurable via
-    `--ansi-width`).
+    `--utf8-width`).
   - `markdown`: GitHub-flavored Markdown code blocks, with automatic language
     detection from the file extension.
   - `ascii`: Simple `=== file.txt ===` headers for easy separation.
@@ -104,6 +107,11 @@ AI chat, delivering complete and unambiguous context in seconds. This makes
     file (e.g., `vim: ft=rust`), or 3) the file extension.
 - **Line Numbering**: Prepend line numbers to every line with the `-n` or
   `--numbers` flag.
+- **Clipboard Support**: Copy output directly to the system clipboard with the
+  `-c` or `--copy` flag. Supports multiple clipboard providers:
+  - Native clipboard on Windows, macOS, and Linux (X11/Wayland)
+  - Terminal escape sequences (OSC 52 for tmux/SSH, OSC 5522 for Kitty)
+  - Automatic provider detection based on your environment
 - **Flexible Input**:
   - Process multiple files and directories.
   - Read from `stdin`, allowing it to be used in shell pipelines.
@@ -127,6 +135,12 @@ directly from source. From the root of the project repository:
 
 ```bash
 cargo install --path .
+```
+
+To build without clipboard support (reduces dependencies):
+
+```bash
+cargo install --path . --no-default-features
 ```
 
 ### Building Packages
@@ -202,6 +216,9 @@ rucat README.md Cargo.toml
 
 # Pipe content from another command
 ls -1 src/formatters | rucat
+
+# Copy output to clipboard
+rucat --copy src/main.rs
 ```
 
 ### Formatting Options
@@ -224,6 +241,9 @@ rucat -f pretty src/main.rs
 
 # Force a specific syntax for the pretty-printer
 rucat -f pretty --pretty-syntax sh < 'my-script-without-extension'
+
+# Pretty-print and copy to clipboard
+rucat -f pretty --copy src/main.rs
 ```
 
 ### Advanced Input
@@ -234,6 +254,9 @@ safer and more robust than using `xargs`. This is especially useful with `find`.
 ```bash
 # Find all Rust files and display them using the markdown format
 find src -name "*.rs" -print0 | rucat -0 -f markdown
+
+# Find and copy all configuration files to clipboard
+find . -name "*.toml" -print0 | rucat -0 --copy
 ```
 
 ### Path Stripping
@@ -248,6 +271,32 @@ rucat -f ascii src/formatters/ansi.rs
 # After stripping 2 components: === ansi.rs ===
 rucat -f ascii --strip 2 src/formatters/ansi.rs
 ```
+
+### Clipboard Support
+
+The `--copy` flag allows you to copy the output directly to your system clipboard
+while still printing to stdout. This is particularly useful for quickly gathering
+code context for AI assistants or sharing snippets with colleagues.
+
+```bash
+# Copy a single file to clipboard
+rucat --copy src/main.rs
+
+# Copy multiple files with pretty formatting
+rucat -f pretty --copy src/*.rs
+
+# Copy from stdin
+echo "Hello, World!" | rucat --copy
+
+# Works over SSH with OSC 52 support (tmux, modern terminals)
+ssh remote-server "rucat --copy /etc/nginx/nginx.conf"
+```
+
+The clipboard feature automatically detects the best provider for your environment:
+- On desktop systems, it uses the native clipboard
+- In SSH sessions or tmux, it uses OSC 52 escape sequences
+- In Kitty terminal, it can use OSC 5522 for better compatibility
+- Falls back gracefully if no clipboard is available
 
 ## Configuration
 

@@ -36,6 +36,7 @@ path = "src/lib.rs"
 
 [features]
 default = []
+clipboard = []
 basic = []
 full = []
 

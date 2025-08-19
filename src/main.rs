@@ -14,7 +14,6 @@
 // along with rucat.  If not, see <https://www.gnu.org/licenses/>.
 //
 // Copyright (C) 2024 Brian 'redbeard' Harrington
-use clap::Parser;
 use rucat::cli::{Args, OutputFormat};
 use serde::Deserialize;
 use std::fs;
@@ -54,7 +53,13 @@ struct FileEntry {
 }
 
 fn main() -> anyhow::Result<()> {
-    let mut args = Args::parse();
+    let mut args = match Args::parse_with_trailing() {
+        Ok(args) => args,
+        Err(e) => {
+            eprintln!("Error: {}", e);
+            std::process::exit(1);
+        }
+    };
     let config = load_config();
 
     // Merge settings: CLI > Config File > Default
