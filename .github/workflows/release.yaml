@@ -66,6 +66,7 @@ jobs:
 
       - name: Determine version
         id: version
+        shell: bash
         run: |
           if [[ "${{ github.event_name }}" == "workflow_dispatch" ]]; then
             TAG_NAME="${{ github.event.inputs.tag }}"
@@ -92,6 +93,7 @@ jobs:
           echo "Tag name: $TAG_NAME"
 
       - name: Validate Cargo.toml version
+        shell: bash
         run: |
           CARGO_VERSION=$(grep -E "^version\s*=" Cargo.toml | head -1 | sed 's/version\s*=\s*"\(.*\)"/\1/')
           if [[ "$CARGO_VERSION" != "${{ steps.version.outputs.version }}" ]]; then
@@ -102,24 +104,31 @@ jobs:
 
       - name: Generate changelog
         id: changelog
+        shell: bash
         run: |
-          # Extract changelog for this version
           if [ -f CHANGELOG.md ]; then
-            # Try to extract changelog section for this version
-            CHANGELOG=$(awk '/^## \[?'${{ steps.version.outputs.version }}'\]?/,/^## \[?[0-9]/ {
-              if (/^## \[?[0-9]/ && !/^## \[?'${{ steps.version.outputs.version }}'\]?/) exit
-              if (!/^## \[?'${{ steps.version.outputs.version }}'\]?/) print
-            }' CHANGELOG.md | sed '$ { /^[[:space:]]*$/ d; }')
+            VERSION="${{ steps.version.outputs.version }}"
+            # Use awk to extract the content for the specific version.
+            # 1. Find the line with the version header, set a flag, and skip to the next line.
+            # 2. When the next version header is found, unset the flag.
+            # 3. Print any lines for which the flag is set.
+            CHANGELOG=$(awk -v ver="^## \\[?$VERSION\\]?" '
+              $0 ~ ver { in_section = 1; next }
+              /^## \\[[0-9]/ { in_section = 0 }
+              in_section { print }
+            ' CHANGELOG.md | sed '$ { /^[[:space:]]*$/ d; }') # Trim trailing blank line
 
             if [[ -n "$CHANGELOG" ]]; then
               # Save changelog to file and output
               echo "$CHANGELOG" > release-changelog.md
-              echo "changelog<<EOF" >> $GITHUB_OUTPUT
-              echo "$CHANGELOG" >> $GITHUB_OUTPUT
-              echo "EOF" >> $GITHUB_OUTPUT
+              {
+                echo 'changelog<<EOF'
+                echo "$CHANGELOG"
+                echo 'EOF'
+              } >> "$GITHUB_OUTPUT"
               echo "✅ Changelog extracted"
             else
-              echo "::warning::No changelog found for version ${{ steps.version.outputs.version }}"
+              echo "::warning::No changelog found for version $VERSION"
               echo "changelog=No changelog available." >> $GITHUB_OUTPUT
             fi
           else
@@ -252,11 +261,13 @@ jobs:
         uses: Swatinem/rust-cache@v2
 
       - name: Install security tools
+        shell: bash
         run: |
           cargo install --locked cargo-audit
           cargo install --locked cargo-deny
 
       - name: Run comprehensive security audit
+        shell: bash
         run: |
           echo "### Security Audit Results" >> $GITHUB_STEP_SUMMARY
 
@@ -337,6 +348,7 @@ jobs:
 
       - name: Build optimized release (cross-compile)
         if: matrix.cross
+        shell: bash
         run: |
           # Build with full optimizations for release
           cross build \
@@ -345,10 +357,11 @@ jobs:
             --all-features \
             --config profile.release.lto=true \
             --config profile.release.codegen-units=1 \
-            --config profile.release.panic='abort'
+            --config profile.release.panic='"abort"'
 
       - name: Build optimized release (native)
         if: ${{ !matrix.cross }}
+        shell: bash
         run: |
           # Build with full optimizations for release
           cargo build \
@@ -357,7 +370,7 @@ jobs:
             --all-features \
             --config profile.release.lto=true \
             --config profile.release.codegen-units=1 \
-            --config profile.release.panic='abort'
+            --config profile.release.panic='"abort"'
 
       - name: Prepare release package
         shell: bash
@@ -398,6 +411,8 @@ jobs:
           cd staging
           if [ "${{ runner.os }}" = "Windows" ]; then
             certutil -hashfile "${BINARY_NAME}.exe" SHA256 > SHA256SUMS.txt
+          elif [ "${{ runner.os }}" = "macOS" ]; then
+            shasum -a 256 "${BINARY_NAME}" > SHA256SUMS.txt
           else
             sha256sum "${BINARY_NAME}" > SHA256SUMS.txt
           fi
@@ -502,6 +517,7 @@ jobs:
           CARGO_REGISTRY_TOKEN: ${{ secrets.CRATES_IO_TOKEN }}
 
       - name: Publish summary
+        shell: bash
         run: |
           echo "### ✅ Published to crates.io" >> $GITHUB_STEP_SUMMARY
           echo "Package: ${{ env.BINARY_NAME }} v${{ needs.validate.outputs.version }}" >> $GITHUB_STEP_SUMMARY
@@ -516,6 +532,7 @@ jobs:
 
     steps:
       - name: Generate release summary
+        shell: bash
         run: |
           echo "# 🚀 Release ${{ needs.validate.outputs.version }}" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY

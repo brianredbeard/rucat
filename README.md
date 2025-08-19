@@ -1,6 +1,7 @@
 # `rucat` - A versatile `cat` clone
 
 ![rucat image](/.assets/rucat.png)
+_our mascot, "Rucus"_
 
 `rucat` is `cat` reborn for the era of LLMs. A critical tool for every prompt
 engineer.

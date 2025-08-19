@@ -94,6 +94,7 @@ jobs:
     steps:
       - name: Parse build configuration
         id: config
+        shell: bash
         run: |
           # Parse build profile
           case "${{ github.event.inputs.build_profile }}" in
@@ -129,12 +130,13 @@ jobs:
 
       - name: Generate build matrix
         id: matrix
+        shell: bash
         run: |
           # Parse targets from comma-separated input
           TARGETS="${{ github.event.inputs.build_targets }}"
           
           # Create JSON array for matrix
-          MATRIX=$(echo "$TARGETS" | jq -R 'split(",") | map(select(length > 0) | ltrimstr(" ") | rtrimstr(" ")) | map({
+          MATRIX=$(echo "$TARGETS" | jq -c -R 'split(",") | map(select(length > 0) | ltrimstr(" ") | rtrimstr(" ")) | map({
             target: .,
             os: (if test("windows") then "windows-latest"
                  elif test("apple|darwin") then "macos-latest"  
@@ -148,6 +150,7 @@ jobs:
           echo "$MATRIX" | jq .
 
       - name: Build configuration summary
+        shell: bash
         run: |
           echo "## Manual Build Configuration" >> $GITHUB_STEP_SUMMARY
           echo "- **Rust Version**: ${{ github.event.inputs.rust_version }}" >> $GITHUB_STEP_SUMMARY
@@ -182,15 +185,18 @@ jobs:
           key: test-${{ github.event.inputs.rust_version }}
 
       - name: Run tests
+        shell: bash
         run: |
           cargo test --workspace --verbose ${{ needs.setup.outputs.feature-flags }}
 
       - name: Run doctests
         if: github.event.inputs.features != 'none'
+        shell: bash
         run: |
           cargo test --workspace --doc ${{ needs.setup.outputs.feature-flags }}
 
       - name: Test report
+        shell: bash
         run: |
           echo "### Test Results" >> $GITHUB_STEP_SUMMARY
           echo "- Rust: ${{ github.event.inputs.rust_version }}" >> $GITHUB_STEP_SUMMARY
@@ -218,16 +224,19 @@ jobs:
           key: security
 
       - name: Install security tools
+        shell: bash
         run: |
           cargo install --locked cargo-audit
           cargo install --locked cargo-deny
 
       - name: Run security audit
+        shell: bash
         run: |
           echo "### Security Audit" >> $GITHUB_STEP_SUMMARY
           cargo audit || echo "::warning::Vulnerabilities found"
 
       - name: Run dependency policy check
+        shell: bash
         run: |
           if [ ! -f deny.toml ]; then
             cargo deny init
@@ -268,6 +277,7 @@ jobs:
 
       - name: Build binary (cross-compile)
         if: matrix.cross
+        shell: bash
         run: |
           echo "Building for target: ${{ matrix.target }}"
           echo "Profile: ${{ github.event.inputs.build_profile }}"
@@ -281,6 +291,7 @@ jobs:
 
       - name: Build binary (native)
         if: ${{ !matrix.cross }}
+        shell: bash
         run: |
           echo "Building for target: ${{ matrix.target }}"
           echo "Profile: ${{ github.event.inputs.build_profile }}"
@@ -312,15 +323,28 @@ jobs:
           echo "binary-ext=${BINARY_EXT}" >> $GITHUB_OUTPUT
 
       - name: Test binary (basic smoke test)
-        if: matrix.target == 'x86_64-unknown-linux-gnu' || matrix.target == 'x86_64-pc-windows-msvc' || matrix.target == 'x86_64-apple-darwin'
+        if: ${{ !matrix.cross }} # Only run smoke tests for native builds
         shell: bash
         run: |
-          # Run a basic smoke test if the binary supports --version or --help
-          if [ -f "${{ steps.binary-info.outputs.binary-path }}" ]; then
-            echo "Testing binary..."
-            ${{ steps.binary-info.outputs.binary-path }} --version || \
-            ${{ steps.binary-info.outputs.binary-path }} --help || \
-            echo "Binary exists but doesn't support --version or --help"
+          echo "--- Binary Smoke Test ---"
+          BINARY_PATH="${{ steps.binary-info.outputs.binary-path }}"
+          
+          if [ ! -f "$BINARY_PATH" ]; then
+            echo "::error::Binary not found at $BINARY_PATH"
+            exit 1
+          fi
+          
+          echo "Binary found. Running smoke test..."
+          # Normalize arch: uname -m on macOS aarch64 is "arm64"
+          NATIVE_ARCH=$(uname -m)
+          if [[ "$NATIVE_ARCH" == "arm64" ]]; then
+            NATIVE_ARCH="aarch64"
+          fi
+          
+          if [[ "${{ matrix.target }}" == *"$NATIVE_ARCH"* ]]; then
+            $BINARY_PATH --version || $BINARY_PATH --help || echo "Binary doesn't support --version or --help"
+          else
+            echo "Skipping smoke test: target arch does not match native arch."
           fi
 
       - name: Prepare artifacts
@@ -389,6 +413,7 @@ jobs:
 
     steps:
       - name: Generate final summary
+        shell: bash
         run: |
           echo "# Manual Build Results" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
