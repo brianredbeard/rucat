@@ -1,3 +1,4 @@
 .aider*
 target/
-assets/
+coverage-report/
+security-reports/
