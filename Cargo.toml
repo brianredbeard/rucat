@@ -31,6 +31,11 @@ assets = [
 name = "rucat"
 path = "src/lib.rs"
 
+[[bin]]
+name = "generate-assets"
+path = "src/bin/generate-assets.rs"
+required-features = ["generate-assets"]
+
 # See more keys and their definitions at
 # https://doc.rust-lang.org/cargo/reference/manifest.html
 
@@ -39,6 +44,7 @@ default = []
 clipboard = []
 basic = []
 full = []
+generate-assets = ["clap_complete", "clap_mangen"]
 
 [dependencies]
 clap = { version = "4.5", features = ["derive"] }
@@ -50,6 +56,8 @@ walkdir = "2"
 regex = "1.11.1"
 syntect = { version = "5.2.0", features = ["default-fancy"] }
 base64 = "0.22"
+clap_complete = { version = "4.5", optional = true }
+clap_mangen = { version = "0.2.29", optional = true }
 
 [dependencies.dirs]
 version = "6.0"
@@ -59,9 +67,3 @@ version = "0.9"
 assert_cmd = "2"         # spawn compiled binary
 predicates = { version = "3", features = ["diff"] }
 tempfile    = "3"
-
-[build-dependencies]
-clap = { version = "4.5", features = ["derive"] }
-serde = { version = "1.0", features = ["derive"] }
-clap_complete = "4.5"
-clap_mangen = "0.2.29"

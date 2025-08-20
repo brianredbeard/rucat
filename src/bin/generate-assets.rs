@@ -1,20 +1,18 @@
-// build.rs
 use clap::CommandFactory;
 use clap_complete::{Shell, generate};
 use clap_mangen::Man;
 use std::fs::{self, File};
 use std::path::Path;
 
-include!("src/cli.rs");
+// Path is relative to this file's location (src/bin/)
+include!("../cli.rs");
 
 fn main() {
-    println!("cargo:rerun-if-changed=src/cli.rs");
-    println!("cargo:rerun-if-changed=build.rs");
-
+    println!("Generating man page and shell completions...");
     let cmd = Args::command();
-
     generate_man_page(&cmd);
     generate_completions(&cmd);
+    println!("Done.");
 }
 
 fn generate_man_page(cmd: &clap::Command) {

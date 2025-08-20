@@ -6,7 +6,7 @@
 .DEFAULT_GOAL := help
 CARGO := cargo
 
-.PHONY: all build check clippy clean doc fmt help install release run test build-macos-arm64 build-linux-arm64 build-linux-amd64 cross-build-all
+.PHONY: all build check clippy clean doc fmt help install release run test build-macos-arm64 build-linux-arm64 build-linux-amd64 cross-build-all generate-assets lint fmt-check clippy-pedantic check-release test-doc deny ci ci-lint ci-test ci-security doc-check security-audit coverage bench check-dirty test-all-features test-minimal-features
 
 # ==============================================================================
 # Main targets
@@ -32,6 +32,83 @@ test:
 check:
 	@echo "Checking source code..."
 	@$(CARGO) check
+
+# ==============================================================================
+# Linting and Validation
+# ==============================================================================
+
+lint: fmt-check clippy
+	@echo "All validation checks passed successfully."
+
+fmt-check:
+	@echo "Checking code formatting..."
+	@$(CARGO) fmt --all -- --check
+
+clippy-pedantic:
+	@echo "Running pedantic clippy linter..."
+	@$(CARGO) clippy --workspace --all-targets --all-features -- -D warnings -D clippy::pedantic -D clippy::nursery -D clippy::cargo
+
+check-release:
+	@echo "Checking release build..."
+	@$(CARGO) check --workspace --release
+	@$(CARGO) check --workspace --release --all-features --all-targets
+
+test-doc:
+	@echo "Running doc tests..."
+	@$(CARGO) test --workspace --doc
+	@$(CARGO) test --workspace --all-features --release --doc
+
+deny:
+	@echo "Checking for crate policy violations..."
+	@$(CARGO) deny check -D warnings
+
+# ==============================================================================
+# CI Targets (emulate .github/workflows/ci.yaml)
+# ==============================================================================
+
+ci: ci-lint ci-test ci-security
+	@echo "All CI checks passed successfully."
+
+# Mirrors the 'lint' job in CI
+ci-lint: fmt-check clippy doc-check check-dirty
+
+# Mirrors the 'test' job matrix in CI
+ci-test: check-release test-all-features test-minimal-features test-doc
+
+# Mirrors the 'security' job in CI
+ci-security: deny security-audit
+
+doc-check:
+	@echo "Checking documentation..."
+	@RUSTDOCFLAGS="-D warnings -D rustdoc::broken_intra_doc_links" $(CARGO) doc --workspace --all-features --no-deps --document-private-items
+
+security-audit:
+	@echo "Running cargo audit for security vulnerabilities..."
+	@$(CARGO) audit
+
+coverage:
+	@echo "Generating code coverage report..."
+	@$(CARGO) llvm-cov --workspace --all-features --lcov --output-path lcov.info
+	@echo "Coverage report generated at lcov.info"
+	@echo "To view HTML report, run: cargo llvm-cov report --html --output-dir coverage-html"
+
+bench:
+	@echo "Running benchmarks..."
+	@$(CARGO) bench --all-features
+
+check-dirty:
+	@echo "Checking for uncommitted changes..."
+	@if ! git diff --exit-code --quiet; then \
+		echo "::error::Uncommitted changes detected. Please commit or stash them before running CI checks."; \
+		exit 1; \
+	fi
+	@echo "No uncommitted changes found."
+
+test-all-features:
+	@$(CARGO) test --workspace --all-features
+
+test-minimal-features:
+	@$(CARGO) test --workspace --no-default-features
 
 # ==============================================================================
 # Cross-compilation targets
@@ -66,15 +143,19 @@ cross-build-all: build-macos-arm64 build-linux-arm64 build-linux-amd64
 
 clippy:
 	@echo "Running clippy linter..."
-	@$(CARGO) clippy
+	@$(CARGO) clippy --workspace --all-targets --all-features -- -D warnings
 
-fmt:
-	@echo "Formatting code..."
-	@$(CARGO) fmt
+generate-assets:
+	@echo "Generating man page and shell completions..."
+	@$(CARGO) run --bin generate-assets --features generate-assets
 
 doc:
 	@echo "Generating documentation..."
 	@$(CARGO) doc --no-deps --open
+
+fmt:
+	@echo "Formatting code..."
+	@$(CARGO) fmt --all
 
 install: release
 	@echo "Installing release binary..."
@@ -100,7 +181,20 @@ help:
 	@echo "  run        Run the project. Pass arguments via ARGS."
 	@echo "             Example: make run ARGS=\"-f ansi src/main.rs\""
 	@echo "  test       Run all tests."
-	@echo "  check      Check source code for errors without building."
+	@echo "  check      Check debug build for errors without building."
+	@echo ""
+	@echo "CI targets (to emulate GitHub Actions workflow):"
+	@echo "  ci         Run all primary CI validation checks (lint, test, security)."
+	@echo "  ci-lint    Run formatting, clippy, doc, and dirtiness checks."
+	@echo "  ci-test    Run test suite with multiple feature configurations."
+	@echo "  ci-security Run security audit and dependency policy checks."
+	@echo ""
+	@echo "Linting and Validation targets:"
+	@echo "  lint       Run standard developer lint checks (fmt-check, clippy)."
+	@echo "  fmt-check  Check code formatting."
+	@echo "  clippy-pedantic  Run stricter clippy linter."
+	@echo "  check-release  Check release build with default and all features."
+	@echo "  deny       Check for crate policy violations (e.g., licenses)."
 	@echo ""
 	@echo "Cross-compilation targets (release build):"
 	@echo "  build-macos-arm64   Build for macOS (ARM64)."
@@ -112,6 +206,10 @@ help:
 	@echo "  clippy     Run the clippy linter for code analysis."
 	@echo "  fmt        Format code according to style guidelines."
 	@echo "  doc        Generate and open project documentation."
+	@echo "  doc-check  Check documentation for broken links and warnings."
+	@echo "  coverage   Generate a code coverage report."
+	@echo "  bench      Run benchmarks."
+	@echo "  generate-assets  Generate man page and shell completions."
 	@echo "  install    Build release and install to Cargo's bin directory."
 	@echo "  clean      Remove build artifacts."
 	@echo "  help       Display this help message."
