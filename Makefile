@@ -6,7 +6,7 @@
 .DEFAULT_GOAL := help
 CARGO := cargo
 
-.PHONY: all build check clippy clean doc fmt help install release run test build-macos-arm64 build-linux-arm64 build-linux-amd64 cross-build-all generate-assets lint fmt-check clippy-pedantic check-release test-doc deny ci ci-lint ci-test ci-security doc-check security-audit coverage bench check-dirty test-all-features test-minimal-features install-cross cross-build security-audit-ci deny-ci
+.PHONY: all build check clippy clean doc fmt help install release run test build-macos-arm64 build-linux-arm64 build-linux-amd64 build-linux-riscv64 cross-build-all generate-assets lint fmt-check clippy-pedantic check-release test-doc deny ci ci-lint ci-test ci-security doc-check security-audit coverage bench check-dirty test-all-features test-minimal-features install-cross cross-build security-audit-ci deny-ci
 
 # ==============================================================================
 # Main targets
@@ -134,6 +134,7 @@ test-minimal-features:
 MACOS_ARM64_TARGET := aarch64-apple-darwin
 LINUX_ARM64_TARGET := aarch64-unknown-linux-gnu
 LINUX_AMD64_TARGET := x86_64-unknown-linux-gnu
+LINUX_RISCV64_TARGET := riscv64gc-unknown-linux-gnu
 
 build-macos-arm64:
 	@echo "Building release for macOS (ARM64)..."
@@ -147,7 +148,11 @@ build-linux-amd64:
 	@echo "Building release for Linux (AMD64)..."
 	@$(CARGO) build --release --target $(LINUX_AMD64_TARGET)
 
-cross-build-all: build-macos-arm64 build-linux-arm64 build-linux-amd64
+build-linux-riscv64:
+	@echo "Building release for Linux (RISC-V 64)..."
+	@make cross-build TARGET=$(LINUX_RISCV64_TARGET)
+
+cross-build-all: build-macos-arm64 build-linux-arm64 build-linux-amd64 build-linux-riscv64
 	@echo "All cross-compilation builds complete."
 
 install-cross:
@@ -222,7 +227,8 @@ help:
 	@echo "  build-macos-arm64   Build for macOS (ARM64)."
 	@echo "  build-linux-arm64   Build for Linux (ARM64)."
 	@echo "  build-linux-amd64   Build for Linux (AMD64)."
-	@echo "  cross-build-all     Build for all cross-compilation targets."
+	@echo "  build-linux-riscv64 Build for Linux (RISC-V 64)."
+	@echo "  cross-build-all     Build for all cross-compilation targets (macOS, Linux ARM/AMD/RISC-V)."
 	@echo ""
 	@echo "Utility targets:"
 	@echo "  clippy     Run the clippy linter for code analysis."
