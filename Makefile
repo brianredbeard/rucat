@@ -6,7 +6,7 @@
 .DEFAULT_GOAL := help
 CARGO := cargo
 
-.PHONY: all build check clippy clean doc fmt help install release run test build-macos-arm64 build-linux-arm64 build-linux-amd64 build-linux-riscv64 cross-build-all generate-assets lint fmt-check clippy-pedantic check-release test-doc deny ci ci-lint ci-test ci-security doc-check security-audit coverage bench check-dirty test-all-features test-minimal-features install-cross cross-build security-audit-ci deny-ci
+.PHONY: all build check clippy clean doc fmt help install release run test build-macos-arm64 build-linux-arm64 build-linux-amd64 build-linux-riscv64 cross-build-all generate-assets lint fmt-check clippy-pedantic check-release test-doc deny ci ci-lint ci-test ci-security doc-check security-audit coverage bench check-dirty test-all-features test-minimal-features install-cross cross-build security-audit-ci deny-ci functional-test update-snapshots
 
 # ==============================================================================
 # Main targets
@@ -25,7 +25,7 @@ release:
 run:
 	@$(CARGO) run -- $(ARGS)
 
-test:
+test: functional-test
 	@echo "Running tests..."
 	@$(CARGO) test
 
@@ -73,7 +73,7 @@ ci: ci-lint ci-test ci-security
 ci-lint: fmt-check clippy doc-check check-dirty
 
 # Mirrors the 'test' job matrix in CI
-ci-test: check-release test-all-features test-minimal-features test-doc
+ci-test: check-release test-all-features test-minimal-features test-doc functional-test
 
 # Mirrors the 'security' job in CI
 ci-security: deny-ci security-audit-ci
@@ -122,6 +122,29 @@ test-all-features:
 
 test-minimal-features:
 	@$(CARGO) test --workspace --no-default-features
+
+# ==============================================================================
+# Functional Tests
+# ==============================================================================
+
+RUCAT_BIN := target/release/rucat
+SNAPSHOT_DIR := tests/snapshots
+
+functional-test: release
+	@echo "Running functional tests..."
+	@echo "  Testing ascii format..."
+	@$(RUCAT_BIN) -f ascii --strip 1 src/lib.rs | diff -u $(SNAPSHOT_DIR)/lib.rs.ascii.snapshot -
+	@echo "  Testing markdown format..."
+	@$(RUCAT_BIN) -f markdown --strip 1 src/lib.rs | diff -u $(SNAPSHOT_DIR)/lib.rs.md.snapshot -
+	@echo "Functional tests passed."
+
+update-snapshots: release
+	@echo "Updating functional test snapshots..."
+	@mkdir -p $(SNAPSHOT_DIR)
+	@$(RUCAT_BIN) -f ascii --strip 1 src/lib.rs > $(SNAPSHOT_DIR)/lib.rs.ascii.snapshot
+	@$(RUCAT_BIN) -f markdown --strip 1 src/lib.rs > $(SNAPSHOT_DIR)/lib.rs.md.snapshot
+	@echo "Snapshots updated."
+
 
 # ==============================================================================
 # Cross-compilation targets
@@ -222,6 +245,10 @@ help:
 	@echo "  clippy-pedantic  Run stricter clippy linter."
 	@echo "  check-release  Check release build with default and all features."
 	@echo "  deny       Check for crate policy violations (e.g., licenses)."
+	@echo ""
+	@echo "Functional test targets:"
+	@echo "  functional-test   Run snapshot tests against the release binary."
+	@echo "  update-snapshots  Update the snapshot files with current output."
 	@echo ""
 	@echo "Cross-compilation targets (release build):"
 	@echo "  build-macos-arm64   Build for macOS (ARM64)."
