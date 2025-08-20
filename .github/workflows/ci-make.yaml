@@ -27,7 +27,8 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@stable
-        with: { components: rustfmt }
+        with:
+          components: rustfmt
       - uses: Swatinem/rust-cache@v2
       - run: make fmt-check
 
@@ -37,7 +38,8 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@stable
-        with: { components: clippy }
+        with:
+          components: clippy
       - uses: Swatinem/rust-cache@v2
       - run: make clippy
 
@@ -80,7 +82,8 @@ jobs:
   security-audit:
     name: Cargo Audit
     runs-on: ubuntu-latest
-    permissions: { security-events: write }
+    permissions:
+      security-events: write
     steps:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@stable
@@ -113,9 +116,12 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@stable
-        with: { toolchain: ${{ matrix.rust }}, targets: ${{ matrix.target }} }
+        with:
+          toolchain: ${{ matrix.rust }}
+          targets: ${{ matrix.target }}
       - uses: Swatinem/rust-cache@v2
-        with: { key: ${{ matrix.os }}-${{ matrix.rust }}-${{ matrix.target }} }
+        with:
+          key: ${{ matrix.os }}-${{ matrix.rust }}-${{ matrix.target }}
 
       - name: Run checks and tests via make
         run: |
@@ -138,14 +144,19 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@stable
-        with: { components: llvm-tools-preview }
+        with:
+          components: llvm-tools-preview
       - uses: Swatinem/rust-cache@v2
       - run: cargo install --locked cargo-llvm-cov
       - run: make coverage
       - uses: codecov/codecov-action@v4
-        with: { files: lcov.info, fail_ci_if_error: false }
+        with:
+          files: lcov.info
+          fail_ci_if_error: false
       - uses: actions/upload-artifact@v4
-        with: { name: coverage-report, path: lcov.info }
+        with:
+          name: coverage-report
+          path: lcov.info
 
   benchmark:
     name: Performance Benchmarks
@@ -165,7 +176,9 @@ jobs:
           echo '```' >> $GITHUB_STEP_SUMMARY
       - uses: actions/upload-artifact@v4
         if: always()
-        with: { name: benchmark-results, path: benchmark-results.txt }
+        with:
+          name: benchmark-results
+          path: benchmark-results.txt
 
   cross-compile:
     name: Cross-compile ${{ matrix.target }}
@@ -182,9 +195,11 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@stable
-        with: { targets: ${{ matrix.target }} }
+        with:
+          targets: ${{ matrix.target }}
       - uses: Swatinem/rust-cache@v2
-        with: { key: cross-${{ matrix.target }} }
+        with:
+          key: cross-${{ matrix.target }}
       - run: make install-cross
       - run: make cross-build TARGET=${{ matrix.target }}
       - uses: actions/upload-artifact@v4
