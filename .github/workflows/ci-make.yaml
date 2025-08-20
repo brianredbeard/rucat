@@ -1,74 +1,232 @@
 ---
-name: CI with Makefile
+# Granular CI pipeline for Rust projects, using Makefile targets
+# This workflow is designed to be highly parallel and mirror the original ci.yaml structure.
+name: CI (Granular via Make)
 
 on:
   push:
     branches: [main, develop]
   pull_request:
     branches: [main, develop]
+  schedule:
+    - cron: '0 2 * * *'
 
 env:
   CARGO_TERM_COLOR: always
+  CARGO_INCREMENTAL: 0
+  RUST_BACKTRACE: short
+  CARGO_NET_RETRY: 10
 
 jobs:
-  lint:
-    name: Lint
+  # ============================================================================
+  # Linting Jobs (run in parallel)
+  # ============================================================================
+  fmt-check:
+    name: Format Check
     runs-on: ubuntu-latest
     steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with: { components: rustfmt }
+      - uses: Swatinem/rust-cache@v2
+      - run: make fmt-check
 
-      - name: Install Rust toolchain
-        uses: dtolnay/rust-toolchain@stable
+  clippy:
+    name: Clippy
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with: { components: clippy }
+      - uses: Swatinem/rust-cache@v2
+      - run: make clippy
+
+  doc-check:
+    name: Doc Check
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+      - run: make doc-check
+
+  # This job depends on the formatters and ensures no source files were modified.
+  check-dirty:
+    name: Verify No Uncommitted Changes
+    runs-on: ubuntu-latest
+    needs: [fmt-check]
+    steps:
+      - uses: actions/checkout@v4
+      - run: make check-dirty
+
+  # ============================================================================
+  # Security Jobs (run in parallel with linting)
+  # ============================================================================
+  deny:
+    name: Cargo Deny
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+      - run: cargo install --locked cargo-deny
+      - run: make deny-ci
+      - uses: actions/upload-artifact@v4
+        if: always()
         with:
-          components: rustfmt, clippy
+          name: deny-report
+          path: deny-report.json
 
-      - name: Setup Rust cache
-        uses: Swatinem/rust-cache@v2
+  security-audit:
+    name: Cargo Audit
+    runs-on: ubuntu-latest
+    permissions: { security-events: write }
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+      - run: cargo install --locked cargo-audit
+      - run: make security-audit-ci
+      - uses: actions/upload-artifact@v4
+        if: always()
         with:
-          key: lint
+          name: audit-report
+          path: audit-report.json
 
-      - name: Run lint checks
-        run: make ci-lint
-
+  # ============================================================================
+  # Testing Job (Matrix)
+  # ============================================================================
   test:
-    name: Test
-    runs-on: ubuntu-latest
-    needs: lint
+    name: Test Rust ${{ matrix.rust }} on ${{ matrix.os }}
+    runs-on: ${{ matrix.runs-on }}
+    needs: [clippy, doc-check, check-dirty] # Depends on all lint jobs
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { rust: stable, os: linux, runs-on: ubuntu-latest, target: x86_64-unknown-linux-gnu, features: default }
+          - { rust: stable, os: windows, runs-on: windows-latest, target: x86_64-pc-windows-msvc, features: default }
+          - { rust: stable, os: macos-arm, runs-on: macos-latest, target: aarch64-apple-darwin, features: default }
+          - { rust: '1.88.0', os: linux, runs-on: ubuntu-latest, target: x86_64-unknown-linux-gnu, features: minimal }
+          - { rust: beta, os: linux, runs-on: ubuntu-latest, target: x86_64-unknown-linux-gnu, features: default, allow-failure: true }
+          - { rust: nightly, os: linux, runs-on: ubuntu-latest, target: x86_64-unknown-linux-gnu, features: all, allow-failure: true }
     steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with: { toolchain: ${{ matrix.rust }}, targets: ${{ matrix.target }} }
+      - uses: Swatinem/rust-cache@v2
+        with: { key: ${{ matrix.os }}-${{ matrix.rust }}-${{ matrix.target }} }
 
-      - name: Install Rust toolchain
-        uses: dtolnay/rust-toolchain@stable
-
-      - name: Setup Rust cache
-        uses: Swatinem/rust-cache@v2
-        with:
-          key: test
-
-      - name: Run tests
-        run: make ci-test
-
-  security:
-    name: Security Audit
-    runs-on: ubuntu-latest
-    needs: lint
-    steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
-
-      - name: Install Rust toolchain
-        uses: dtolnay/rust-toolchain@stable
-
-      - name: Setup Rust cache
-        uses: Swatinem/rust-cache@v2
-        with:
-          key: security
-
-      - name: Install security tools
+      - name: Run checks and tests via make
         run: |
-          cargo install cargo-audit
-          cargo install cargo-deny
-      - name: Run security checks
-        run: make ci-security
+          make check-release
+          if [ "${{ matrix.features }}" = "minimal" ]; then
+            make test-minimal-features
+          else
+            make test-all-features
+          fi
+          make test-doc
+        continue-on-error: ${{ matrix.allow-failure || false }}
+
+  # ============================================================================
+  # Post-Test Jobs
+  # ============================================================================
+  coverage:
+    name: Code Coverage
+    runs-on: ubuntu-latest
+    needs: test
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with: { components: llvm-tools-preview }
+      - uses: Swatinem/rust-cache@v2
+      - run: cargo install --locked cargo-llvm-cov
+      - run: make coverage
+      - uses: codecov/codecov-action@v4
+        with: { files: lcov.info, fail_ci_if_error: false }
+      - uses: actions/upload-artifact@v4
+        with: { name: coverage-report, path: lcov.info }
+
+  benchmark:
+    name: Performance Benchmarks
+    runs-on: ubuntu-latest
+    needs: test
+    if: github.event_name != 'pull_request'
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+      - run: make bench > benchmark-results.txt 2>&1
+      - shell: bash
+        run: |
+          echo "### Benchmark Results" >> $GITHUB_STEP_SUMMARY
+          echo '```' >> $GITHUB_STEP_SUMMARY
+          tail -20 benchmark-results.txt >> $GITHUB_STEP_SUMMARY
+          echo '```' >> $GITHUB_STEP_SUMMARY
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with: { name: benchmark-results, path: benchmark-results.txt }
+
+  cross-compile:
+    name: Cross-compile ${{ matrix.target }}
+    runs-on: ubuntu-latest
+    needs: [test, deny, security-audit]
+    strategy:
+      fail-fast: false
+      matrix:
+        target:
+          - aarch64-unknown-linux-gnu
+          - armv7-unknown-linux-gnueabihf
+          - x86_64-unknown-linux-musl
+          - aarch64-unknown-linux-musl
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with: { targets: ${{ matrix.target }} }
+      - uses: Swatinem/rust-cache@v2
+        with: { key: cross-${{ matrix.target }} }
+      - run: make install-cross
+      - run: make cross-build TARGET=${{ matrix.target }}
+      - uses: actions/upload-artifact@v4
+        with:
+          name: cross-${{ matrix.target }}
+          path: target/${{ matrix.target }}/release/
+
+  # ============================================================================
+  # Final Summary Job
+  # ============================================================================
+  ci-summary:
+    name: CI Summary
+    runs-on: ubuntu-latest
+    needs: [fmt-check, clippy, doc-check, check-dirty, deny, security-audit, test, coverage, cross-compile]
+    if: always()
+    steps:
+      - name: Generate CI summary
+        run: |
+          echo "# CI Pipeline Results" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "| Job | Status |" >> $GITHUB_STEP_SUMMARY
+          echo "|-----|--------|" >> $GITHUB_STEP_SUMMARY
+          echo "| Format Check | ${{ needs.fmt-check.result }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| Clippy | ${{ needs.clippy.result }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| Doc Check | ${{ needs.doc-check.result }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| Dirty Check | ${{ needs.check-dirty.result }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| Deny | ${{ needs.deny.result }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| Audit | ${{ needs.security-audit.result }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| Test | ${{ needs.test.result }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| Coverage | ${{ needs.coverage.result }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| Cross-compile | ${{ needs.cross-compile.result }} |" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          
+          if [[ "${{ needs.fmt-check.result }}" == "success" &&
+                "${{ needs.clippy.result }}" == "success" &&
+                "${{ needs.doc-check.result }}" == "success" &&
+                "${{ needs.check-dirty.result }}" == "success" &&
+                "${{ needs.deny.result }}" == "success" &&
+                "${{ needs.security-audit.result }}" == "success" &&
+                "${{ needs.test.result }}" == "success" ]]; then
+            echo "✅ **CI Pipeline: SUCCESS**" >> $GITHUB_STEP_SUMMARY
+          else
+            echo "❌ **CI Pipeline: FAILED**" >> $GITHUB_STEP_SUMMARY
+            exit 1
+          fi

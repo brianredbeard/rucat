@@ -6,7 +6,7 @@
 .DEFAULT_GOAL := help
 CARGO := cargo
 
-.PHONY: all build check clippy clean doc fmt help install release run test build-macos-arm64 build-linux-arm64 build-linux-amd64 cross-build-all generate-assets lint fmt-check clippy-pedantic check-release test-doc deny ci ci-lint ci-test ci-security doc-check security-audit coverage bench check-dirty test-all-features test-minimal-features
+.PHONY: all build check clippy clean doc fmt help install release run test build-macos-arm64 build-linux-arm64 build-linux-amd64 cross-build-all generate-assets lint fmt-check clippy-pedantic check-release test-doc deny ci ci-lint ci-test ci-security doc-check security-audit coverage bench check-dirty test-all-features test-minimal-features install-cross cross-build
 
 # ==============================================================================
 # Main targets
@@ -136,6 +136,15 @@ build-linux-amd64:
 
 cross-build-all: build-macos-arm64 build-linux-arm64 build-linux-amd64
 	@echo "All cross-compilation builds complete."
+
+install-cross:
+	@echo "Installing cross..."
+	@$(CARGO) install cross --git https://github.com/cross-rs/cross
+
+cross-build:
+	@if [ -z "$(TARGET)" ]; then echo "TARGET environment variable is not set"; exit 1; fi
+	@echo "Cross-compiling for target $(TARGET)..."
+	@cross build --release --target $(TARGET) --all-features
 
 # ==============================================================================
 # Utility targets
