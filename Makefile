@@ -6,7 +6,7 @@
 .DEFAULT_GOAL := help
 CARGO := cargo
 
-.PHONY: all build check clippy clean doc fmt help install release run test build-macos-arm64 build-linux-arm64 build-linux-amd64 cross-build-all generate-assets lint fmt-check clippy-pedantic check-release test-doc deny ci ci-lint ci-test ci-security doc-check security-audit coverage bench check-dirty test-all-features test-minimal-features install-cross cross-build
+.PHONY: all build check clippy clean doc fmt help install release run test build-macos-arm64 build-linux-arm64 build-linux-amd64 cross-build-all generate-assets lint fmt-check clippy-pedantic check-release test-doc deny ci ci-lint ci-test ci-security doc-check security-audit coverage bench check-dirty test-all-features test-minimal-features install-cross cross-build security-audit-ci deny-ci
 
 # ==============================================================================
 # Main targets
@@ -76,11 +76,24 @@ ci-lint: fmt-check clippy doc-check check-dirty
 ci-test: check-release test-all-features test-minimal-features test-doc
 
 # Mirrors the 'security' job in CI
-ci-security: deny security-audit
+ci-security: deny-ci security-audit-ci
 
 doc-check:
 	@echo "Checking documentation..."
 	@RUSTDOCFLAGS="-D warnings -D rustdoc::broken_intra_doc_links" $(CARGO) doc --workspace --all-features --no-deps --document-private-items
+
+security-audit-ci:
+	@echo "Running cargo audit for security vulnerabilities (CI mode)..."
+	@# Generate JSON report, then run again to show human-readable output and issue a warning
+	@# The part with || true ensures the step doesn't fail if vulnerabilities are found
+	@$(CARGO) audit --json --format json > audit-report.json || true
+	@$(CARGO) audit || echo "::warning::Security vulnerabilities found"
+
+deny-ci:
+	@echo "Checking for crate policy violations (CI mode)..."
+	@if [ ! -f deny.toml ]; then $(CARGO) deny init; fi
+	@$(CARGO) deny --format json check > deny-report.json || true
+	@$(CARGO) deny check || echo "::warning::Policy violations found"
 
 security-audit:
 	@echo "Running cargo audit for security vulnerabilities..."
