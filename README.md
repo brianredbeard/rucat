@@ -123,8 +123,6 @@ AI chat, delivering complete and unambiguous context in seconds. This makes
 - **Packaging**:
   - Built-in support for generating `.deb` packages for Debian/Ubuntu systems
     via `cargo deb`.
-  - Built-in support for generating `.rpm` packages for Fedora/RHEL/CentOS
-    systems via `cargo rpm`.
 - **Robust and Fast**: Built with Rust for performance and memory safety.
 
 ## Installation
@@ -154,22 +152,18 @@ cargo install --path . --no-default-features
 
 ### Building Packages
 
-This project is configured to build `.deb` and `.rpm` packages using standard
-Cargo tooling. First, ensure you have the necessary packaging subcommands
-installed:
+This project is configured to build `.deb` packages using standard Cargo
+tooling. First, ensure you have the necessary packaging subcommand installed:
 
 ```bash
-cargo install cargo-deb cargo-rpm
+cargo install cargo-deb
 ```
 
-Then, you can build the packages from the project root:
+Then, you can build the package from the project root:
 
 ```bash
 # Build .deb package (output in target/debian/)
 cargo deb
-
-# Build .rpm package (output in target/release/rpmbuild/RPMs/)
-cargo rpm build
 ```
 
 The binary will be placed in `~/.cargo/bin`.
