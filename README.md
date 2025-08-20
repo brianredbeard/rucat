@@ -129,6 +129,14 @@ AI chat, delivering complete and unambiguous context in seconds. This makes
 
 ## Installation
 
+### From Homebrew (for macOS users)
+
+If you are on macOS and have Homebrew installed, you can install `rucat` with a single command:
+
+```bash
+brew install brianredbeard/rucat/rucat
+```
+
 ### From source with Cargo
 
 If you have the Rust toolchain installed, you can build and install `rucat`
