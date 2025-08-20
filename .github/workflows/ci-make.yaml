@@ -123,6 +123,7 @@ jobs:
         with:
           key: ${{ matrix.os }}-${{ matrix.rust }}-${{ matrix.target }}
       - name: Run checks and tests via make
+        shell: bash
         run: |
           make check-release
           if [ "${{ matrix.features }}" = "minimal" ]; then
