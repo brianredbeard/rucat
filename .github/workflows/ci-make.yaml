@@ -134,6 +134,11 @@ jobs:
           make test-doc
         continue-on-error: ${{ matrix.allow-failure || false }}
 
+      - name: Run functional tests
+        if: matrix.rust == 'stable'
+        run: make functional-test
+        continue-on-error: ${{ matrix.allow-failure || false }}
+
   # ============================================================================
   # Post-Test Jobs
   # ============================================================================
