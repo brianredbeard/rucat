@@ -43,6 +43,9 @@ on:
           - default
           - all
           - none
+          - clipboard
+          - basic
+          - full
           - custom
 
       custom_features:
@@ -125,6 +128,9 @@ jobs:
               ;;
             custom)
               echo "feature-flags=--no-default-features --features ${{ github.event.inputs.custom_features }}" >> $GITHUB_OUTPUT
+              ;;
+            *)
+              echo "feature-flags=--no-default-features --features ${{ github.event.inputs.features }}" >> $GITHUB_OUTPUT
               ;;
           esac
 
