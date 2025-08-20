@@ -4,6 +4,47 @@ This document provides a guide for developers working on the `rucat` project. It
 covers the development workflow, the structure of the `Makefile`, and the
 Continuous Integration (CI) process.
 
+## Development Setup
+
+To get started with `rucat` development, you'll need to set up your local
+environment.
+
+### Prerequisites
+
+- **Git**: For source control.
+- **Rust Toolchain**: We recommend installing Rust via
+  [rustup](https://rustup.rs/).
+
+### Initial Setup
+
+1. **Clone the Repository**:
+
+   ```bash
+   git clone https://github.com/brianredbeard/rucat.git
+   cd rucat
+   ```
+
+1. **Install Required Tools**: The `Makefile` provides a convenient target to
+   install all the necessary Rust components (`rustfmt`, `clippy`) and
+   additional cargo tools (`cargo-deny`, `cargo-audit`, `cargo-llvm-cov`) for
+   development and validation.
+
+   ```bash
+   make setup-dev-env
+   ```
+
+1. **Build and Test**: Verify that everything is set up correctly by building
+   the project and running the test suite.
+
+   ```bash
+   make test
+   ```
+
+You are now ready to start developing! A typical workflow involves making
+changes, running `make lint` to check for quality issues, and running
+`make test` to ensure correctness. Before submitting a pull request, it's a good
+practice to run `make ci` to perform all the checks that our CI pipeline runs.
+
 ## Using the Makefile for Development and Validation
 
 The `Makefile` is the cornerstone of our development and CI process. It provides
@@ -78,6 +119,28 @@ Actions CI pipeline.
   architecture.
   - Example: `make cross-build TARGET=aarch64-unknown-linux-gnu`
 - `make clean`: Removes all build artifacts.
+
+## Commit Message Guidelines
+
+This project follows the
+[Conventional Commits specification](https://www.conventionalcommits.org/en/v1.0.0/).
+This standard provides a simple set of rules for creating an explicit and
+structured commit history, which makes it easier to automate tasks like version
+bumping and changelog generation.
+
+All commit messages should be in the following format:
+
+```
+<type>(<scope>): <description>
+```
+
+- **type**: `feat` (for new features), `fix` (for bug fixes), `docs`, `style`,
+  `refactor`, `test`, `ci`, `build`, `chore`.
+- **scope** (optional): The part of the codebase affected by the change (e.g.,
+  `cli`, `formatters`, `readme`).
+- **description**: A concise, imperative-tense summary of the change.
+
+For example: `docs(readme): update installation instructions`
 
 ## Continuous Integration (CI) Workflow Overview
 

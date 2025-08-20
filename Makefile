@@ -6,7 +6,7 @@
 .DEFAULT_GOAL := help
 CARGO := cargo
 
-.PHONY: all build check clippy clean doc fmt help install release run test build-macos-arm64 build-linux-arm64 build-linux-amd64 build-linux-riscv64 cross-build-all generate-assets lint fmt-check clippy-pedantic check-release test-doc deny ci ci-lint ci-test ci-security doc-check security-audit coverage bench check-dirty test-all-features test-minimal-features install-cross cross-build security-audit-ci deny-ci functional-test update-snapshots
+.PHONY: all build check clippy clean doc fmt help install release run test build-macos-arm64 build-linux-arm64 build-linux-amd64 build-linux-riscv64 cross-build-all generate-assets lint fmt-check clippy-pedantic check-release test-doc deny ci ci-lint ci-test ci-security doc-check security-audit coverage bench check-dirty test-all-features test-minimal-features install-cross cross-build security-audit-ci deny-ci functional-test update-snapshots setup-dev-env
 
 # ==============================================================================
 # Main targets
@@ -215,6 +215,14 @@ clean:
 	@echo "Cleaning project..."
 	@$(CARGO) clean
 
+setup-dev-env:
+	@echo "Setting up development environment..."
+	@echo "Installing rustfmt and clippy..."
+	@rustup component add rustfmt clippy
+	@echo "Installing additional cargo tools..."
+	@$(CARGO) install cargo-deny cargo-audit cargo-llvm-cov
+	@echo "Development environment setup complete."
+
 # ==============================================================================
 # Help
 # ==============================================================================
@@ -268,3 +276,6 @@ help:
 	@echo "  install    Build release and install to Cargo's bin directory."
 	@echo "  clean      Remove build artifacts."
 	@echo "  help       Display this help message."
+	@echo ""
+	@echo "Project Setup:"
+	@echo "  setup-dev-env  Install all necessary Rust components and tools for development."
