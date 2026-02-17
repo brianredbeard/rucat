@@ -1,11 +1,9 @@
 use clap::CommandFactory;
 use clap_complete::{Shell, generate};
 use clap_mangen::Man;
+use rucat::cli::Args;
 use std::fs::{self, File};
 use std::path::Path;
-
-// Path is relative to this file's location (src/bin/)
-include!("../cli.rs");
 
 fn main() {
     println!("Generating man page and shell completions...");

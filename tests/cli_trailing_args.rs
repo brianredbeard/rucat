@@ -182,7 +182,9 @@ fn trailing_unknown_flag_error() {
         .arg("--bogus-flag")
         .assert()
         .failure()
-        .stderr(predicate::str::contains("Unknown flag '--bogus-flag'"));
+        .stderr(predicate::str::contains(
+            "unexpected argument '--bogus-flag' found",
+        ));
 }
 
 #[test]
@@ -198,7 +200,7 @@ fn trailing_flag_missing_value_error() {
         .assert()
         .failure()
         .stderr(predicate::str::contains(
-            "The '--format' flag requires a value",
+            "a value is required for '--format <FORMAT>' but none was supplied",
         ));
 }
 
@@ -214,7 +216,9 @@ fn trailing_flag_invalid_value_error() {
         .args(["--format", "bogus"])
         .assert()
         .failure()
-        .stderr(predicate::str::contains("Invalid format 'bogus'"));
+        .stderr(predicate::str::contains(
+            "invalid value 'bogus' for '--format <FORMAT>'",
+        ));
 
     // Test invalid strip value
     Command::cargo_bin("rucat")
@@ -224,8 +228,27 @@ fn trailing_flag_invalid_value_error() {
         .assert()
         .failure()
         .stderr(predicate::str::contains(
-            "Invalid value 'not-a-number' for --strip",
+            "invalid value 'not-a-number' for '--strip <N>'",
         ));
+}
+
+#[test]
+fn path_resembling_flag_is_handled_with_separator() {
+    let dir = tempdir().unwrap();
+    // Create a file named "-n", which could be mistaken for the --numbers flag
+    let file = prepare_file(dir.path(), "-n", "file content");
+
+    Command::cargo_bin("rucat")
+        .unwrap()
+        .args(["-f", "ascii"])
+        .arg("--") // Use the separator
+        .arg(&file)
+        .assert()
+        .success()
+        // Check that we got the file's content
+        .stdout(predicate::str::contains("file content"))
+        // Check that line numbers were NOT activated, proving "-n" was not treated as a flag
+        .stdout(predicate::str::contains("1 |").not());
 }
 
 #[test]
@@ -304,9 +327,7 @@ fn trailing_copy_flag_without_feature() {
         .arg("-c")
         .assert()
         .failure()
-        .stderr(predicate::str::contains(
-            "The '-c' flag requires the 'clipboard' feature",
-        ));
+        .stderr(predicate::str::contains("unexpected argument '-c' found"));
 
     // Test --copy as well
     Command::cargo_bin("rucat")
@@ -316,6 +337,6 @@ fn trailing_copy_flag_without_feature() {
         .assert()
         .failure()
         .stderr(predicate::str::contains(
-            "The '--copy' flag requires the 'clipboard' feature",
+            "unexpected argument '--copy' found",
         ));
 }

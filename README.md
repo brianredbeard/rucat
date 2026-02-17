@@ -206,100 +206,96 @@ for the project's code.**
 After completing these two steps, your system will be properly configured for
 cross-compilation, and `make cross-build-all` should succeed.
 
-## Usage
+## Command-Line Options
 
-### Basic Usage
+`rucat` offers a rich set of command-line flags to customize its behavior. Flags can be placed before or after file arguments.
 
-```bash
-# Display a single file
-rucat src/main.rs
+### Main Options
 
-# Display multiple files
-rucat README.md Cargo.toml
-
-# Pipe content from another command
-ls -1 src/formatters | rucat
-
-# Copy output to clipboard
-rucat --copy src/main.rs
-```
+-   `FILES...`
+    -   **Description**: One or more files or directories to process. If a directory is provided, `rucat` will recursively process all files within it. If no files are provided, `rucat` reads from standard input.
+    -   **Example**: `rucat README.md src/`
 
 ### Formatting Options
 
-`rucat` defaults to the `markdown` format. Use the `-f` or `--format` flag to
-change it.
+These flags control the appearance of the output.
 
-```bash
-# Use the ANSI formatter with a width of 80 columns and line numbers
-rucat -f ansi --ansi-width 80 -n src/main.rs
+-   `-f, --format <FORMAT>`
+    -   **Description**: Sets the output format.
+    -   **Values**:
+        -   `ansi`: Formats output with ANSI box-drawing characters.
+        -   `utf8`: Formats output with fancy UTF-8 box-drawing characters.
+        -   `markdown`: (Default) Wraps each file's content in a GitHub-flavored Markdown code block.
+        -   `ascii`: Separates files with a simple `=== file.txt ===` header.
+        -   `xml`: Produces structured XML output.
+        -   `json`: Produces a JSON array of file entries, ideal for scripting.
+        -   `pretty`: Applies syntax highlighting based on file type.
+    -   **Example**: `rucat -f pretty src/main.rs`
 
-# Use the simple ASCII format
-rucat -f ascii src/main.rs
+-   `-n, --numbers`
+    -   **Description**: Adds a gutter with line numbers to the output.
+    -   **Example**: `rucat -n Cargo.toml`
 
-# Get JSON output for scripting
-rucat -f json src/main.rs > output.json
+-   `--ansi-width <WIDTH>`
+    -   **Description**: Sets the minimum interior width for the `ansi` formatter.
+    -   **Default**: `80`
+    -   **Example**: `rucat -f ansi --ansi-width 120 src/lib.rs`
 
-# Use the pretty-printer with syntax highlighting
-rucat -f pretty src/main.rs
+-   `--utf8-width <WIDTH>`
+    -   **Description**: Sets the minimum interior width for the `utf8` formatter.
+    -   **Default**: `80`
+    -   **Example**: `rucat -f utf8 --utf8-width 100 src/lib.rs`
 
-# Force a specific syntax for the pretty-printer
-rucat -f pretty --pretty-syntax sh < 'my-script-without-extension'
+-   `--pretty-syntax <SYNTAX>`
+    -   **Description**: Overrides syntax detection for the `pretty` formatter, forcing a specific language.
+    -   **Example**: `echo "echo 'Hello'" | rucat -f pretty --pretty-syntax sh`
 
-# Pretty-print and copy to clipboard
-rucat -f pretty --copy src/main.rs
-```
+### Metadata Options
 
-### Advanced Input
+These flags are used to display file metadata. They are most effective with formats like `ascii`, `ansi`, or `utf8` that display headers.
 
-`rucat` can process a NUL-separated list of files from standard input, which is
-safer and more robust than using `xargs`. This is especially useful with `find`.
+-   `--stat`
+    -   **Description**: Includes detailed file metadata (size, permissions, timestamps, etc.) in the output header for each file.
+    -   **Example**: `rucat --stat /etc/hosts`
 
-```bash
-# Find all Rust files and display them using the markdown format
-find src -name "*.rs" -print0 | rucat -0 -f markdown
+-   `--show-binary-xattrs`
+    -   **Description**: By default, binary extended attributes are hidden when using `--stat`. This flag forces them to be displayed.
+    -   **Example**: `rucat --stat --show-binary-xattrs some_file_with_binary_xattrs`
 
-# Find and copy all configuration files to clipboard
-find . -name "*.toml" -print0 | rucat -0 --copy
-```
+-   `--binary-format <FORMAT>`
+    -   **Description**: Sets the display format for binary extended attributes when `--show-binary-xattrs` is used.
+    -   **Values**:
+        -   `hexdump`: (Default) An `xxd`-style hexadecimal and ASCII view.
+        -   `base64`: Standard Base64 encoding.
+        -   `intel-hex`: The Intel HEX object file format.
+        -   `raw-hex`: A continuous string of hexadecimal characters with no spaces or headers.
+    -   **Example**: `rucat --stat --show-binary-xattrs --binary-format base64 ...`
 
-### Path Stripping
+-   `--hex-width <BYTES>`
+    -   **Description**: Sets the number of bytes per line for the `hexdump` binary format.
+    -   **Default**: `16`
+    -   **Example**: `rucat --stat --show-binary-xattrs --hex-width 32 ...`
 
-When working with deep directory structures, the full file path can be noisy.
-Use `--strip` to shorten the paths in the output headers.
+-   `--base64-width <CHARS>`
+    -   **Description**: Sets the maximum number of characters per line for the `base64` binary format.
+    -   **Default**: `76`
+    -   **Example**: `rucat --stat --show-binary-xattrs --binary-format base64 --base64-width 100 ...`
 
-```bash
-# Before stripping: === src/formatters/ansi.rs ===
-rucat -f ascii src/formatters/ansi.rs
+### Input/Output Options
 
-# After stripping 2 components: === ansi.rs ===
-rucat -f ascii --strip 2 src/formatters/ansi.rs
-```
+These flags control how `rucat` reads input and handles output.
 
-### Clipboard Support
+-   `-c, --copy`
+    -   **Description**: Copies the entire output to the system clipboard while still printing it to standard output. Requires the `clipboard` feature.
+    -   **Example**: `rucat -c src/main.rs`
 
-The `--copy` flag allows you to copy the output directly to your system clipboard
-while still printing to stdout. This is particularly useful for quickly gathering
-code context for AI assistants or sharing snippets with colleagues.
+-   `-0, --null`
+    -   **Description**: Reads a NUL-separated list of file paths from standard input. This is useful for safely handling filenames that contain whitespace or special characters, especially when used with `find -print0`.
+    -   **Example**: `find . -name "*.rs" -print0 | rcat -0`
 
-```bash
-# Copy a single file to clipboard
-rucat --copy src/main.rs
-
-# Copy multiple files with pretty formatting
-rucat -f pretty --copy src/*.rs
-
-# Copy from stdin
-echo "Hello, World!" | rucat --copy
-
-# Works over SSH with OSC 52 support (tmux, modern terminals)
-ssh remote-server "rucat --copy /etc/nginx/nginx.conf"
-```
-
-The clipboard feature automatically detects the best provider for your environment:
-- On desktop systems, it uses the native clipboard
-- In SSH sessions or tmux, it uses OSC 52 escape sequences
-- In Kitty terminal, it can use OSC 5522 for better compatibility
-- Falls back gracefully if no clipboard is available
+-   `--strip <N>`
+    -   **Description**: Removes `N` leading path components from filenames in the output headers.
+    -   **Example**: `rucat --strip 2 src/formatters/ansi.rs` will display the header for `ansi.rs`.
 
 ## Configuration
 

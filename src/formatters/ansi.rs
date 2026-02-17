@@ -15,6 +15,7 @@
 //
 // Copyright (C) 2024 Brian 'redbeard' Harrington
 use super::Formatter;
+use crate::metadata::FileMetadata;
 use std::io::{self, Write};
 use std::path::Path;
 
@@ -24,7 +25,14 @@ pub struct Ansi {
 }
 
 impl Formatter for Ansi {
-    fn write(&self, path: &Path, content: &str, w: &mut dyn Write) -> io::Result<()> {
+    fn write(
+        &mut self,
+        path: &Path,
+        content: &str,
+        metadata: Option<&FileMetadata>,
+        options: &crate::binary_display::BinaryFormatOptions,
+        w: &mut dyn Write,
+    ) -> io::Result<()> {
         // ---------- collect body lines & determine interior width ----------
         let digits = if self.line_numbers {
             content.lines().count().to_string().len()
@@ -46,15 +54,27 @@ impl Formatter for Ansi {
             body.push(rendered);
         }
 
-        let header = format!(" File: {}", path.display());
-        interior = interior.max(header.len());
+        let header_lines: Vec<String> = metadata.map_or_else(
+            || vec![format!(" File: {}", path.display())],
+            |meta| {
+                meta.format_for_display(options)
+                    .lines()
+                    .map(String::from)
+                    .collect()
+            },
+        );
+        for line in &header_lines {
+            interior = interior.max(line.len());
+        }
         interior = interior.max(self.width); // honour minimum width
 
         let hr = "─".repeat(interior);
 
         // ---------------------------- print -------------------------------
         writeln!(w, "┌{hr}┐")?;
-        writeln!(w, "│{}│", pad(&header, interior))?;
+        for line in header_lines {
+            writeln!(w, "│{}│", pad(&line, interior))?;
+        }
         writeln!(w, "├{hr}┤")?;
         for line in body {
             writeln!(w, "│{}│", pad(&line, interior))?;

@@ -16,10 +16,13 @@
 //
 // Copyright (C) 2024 Brian 'redbeard' Harrington
 // Re-export everything tests need
+pub mod binary_display;
 pub mod cli;
 #[cfg(feature = "clipboard")]
 pub mod clipboard;
 pub mod formatters;
+pub mod json_entry;
+pub mod metadata;
 
 use crate::cli::OutputFormat;
 use crate::formatters::{
@@ -50,7 +53,7 @@ impl OutputFormat {
                 line_numbers: ln,
                 syntax_override: pretty_syntax.map(String::from),
             })),
-            Self::Json => None,
+            Self::Json => Some(Box::new(formatters::json::Json::new())),
         }
     }
 }

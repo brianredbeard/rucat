@@ -15,6 +15,7 @@
 //
 // Copyright (C) 2024 Brian 'redbeard' Harrington
 use super::Formatter;
+use crate::metadata::FileMetadata;
 use std::io::{self, Write};
 use std::path::Path;
 
@@ -24,8 +25,20 @@ pub struct Ascii {
 }
 
 impl Formatter for Ascii {
-    fn write(&self, path: &Path, content: &str, w: &mut dyn Write) -> io::Result<()> {
-        writeln!(w, "=== {} ===", path.display())?;
+    fn write(
+        &mut self,
+        path: &Path,
+        content: &str,
+        metadata: Option<&FileMetadata>,
+        options: &crate::binary_display::BinaryFormatOptions,
+        w: &mut dyn Write,
+    ) -> io::Result<()> {
+        if let Some(meta) = metadata {
+            let formatted_meta = meta.format_for_display(options);
+            writeln!(w, "{formatted_meta}")?;
+        } else {
+            writeln!(w, "=== {} ===", path.display())?;
+        }
         let total = content.lines().count();
         let width = if self.line_numbers {
             total.to_string().len()

@@ -15,6 +15,7 @@
 //
 // Copyright (C) 2024 Brian 'redbeard' Harrington
 use super::Formatter;
+use crate::metadata::FileMetadata;
 use std::io::{self, Write};
 use std::path::Path;
 
@@ -23,9 +24,21 @@ pub struct Markdown {
 }
 
 impl Formatter for Markdown {
-    fn write(&self, path: &Path, content: &str, w: &mut dyn Write) -> io::Result<()> {
+    fn write(
+        &mut self,
+        path: &Path,
+        content: &str,
+        metadata: Option<&FileMetadata>,
+        options: &crate::binary_display::BinaryFormatOptions,
+        w: &mut dyn Write,
+    ) -> io::Result<()> {
         let extension = path.extension().and_then(|s| s.to_str()).unwrap_or("");
-        writeln!(w, "---\nFile: {}\n---", path.display())?;
+        if let Some(meta) = metadata {
+            let formatted_meta = meta.format_for_display(options);
+            writeln!(w, "---\n{formatted_meta}---")?;
+        } else {
+            writeln!(w, "---\nFile: {}\n---", path.display())?;
+        }
         writeln!(w, "```{extension}")?;
         let total = content.lines().count();
         let digits = if self.line_numbers {

@@ -40,3 +40,14 @@ fn null_list_is_respected() {
         .success()
         .stdout(contains("=== ").count(2)); // both headers printed
 }
+
+#[test]
+fn empty_null_list_is_handled() {
+    Command::cargo_bin("rucat")
+        .unwrap()
+        .args(["-0", "-f", "ascii"])
+        .write_stdin("")
+        .assert()
+        .success()
+        .stdout(""); // Should produce no output
+}
