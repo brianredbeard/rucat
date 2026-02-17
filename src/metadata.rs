@@ -196,7 +196,7 @@ impl FileMetadata {
         }
     }
 
-    #[cfg(target_family = "unix")]
+    #[cfg(all(target_family = "unix", feature = "acl"))]
     fn extract_posix_acls<P: AsRef<Path>>(path: P) -> Option<String> {
         // exacl::getfacl returns an error if the ACL is not present or not supported.
         match exacl::getfacl(path.as_ref(), None) {
@@ -210,6 +210,11 @@ impl FileMetadata {
             }
             _ => None,
         }
+    }
+
+    #[cfg(all(target_family = "unix", not(feature = "acl")))]
+    fn extract_posix_acls<P: AsRef<Path>>(_path: P) -> Option<String> {
+        None
     }
 
     #[cfg(target_family = "windows")]

@@ -49,8 +49,9 @@ path = "tests/cli_config.rs"
 # https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [features]
-default = ["clipboard"]
+default = ["clipboard", "acl"]
 clipboard = ["dep:arboard"]
+acl = ["dep:exacl"]
 basic = []
 full = []
 generate-assets = ["clap_complete", "clap_mangen"]
@@ -73,7 +74,7 @@ arboard = { version = "3", optional = true }
 [target.'cfg(unix)'.dependencies]
 # For extended attributes on Unix platforms
 xattr = "1.0"
-exacl = { version = "0.12.0", features = ["serde"] }
+exacl = { version = "0.12.0", features = ["serde"], optional = true }
 
 [target.'cfg(target_os = "linux")'.dependencies]
 

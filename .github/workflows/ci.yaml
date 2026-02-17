@@ -254,7 +254,7 @@ jobs:
         run: cargo install cross --git https://github.com/cross-rs/cross
 
       - name: Cross-compile
-        run: cross build --release --target ${{ matrix.target }} --all-features
+        run: cross build --release --target ${{ matrix.target }} --no-default-features --features clipboard
 
       - name: Upload cross-compiled artifacts
         uses: actions/upload-artifact@v4

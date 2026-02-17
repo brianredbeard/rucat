@@ -60,7 +60,7 @@ fn stat_flag_prints_selinux_context_if_present() {
 }
 
 #[test]
-#[cfg(target_family = "unix")]
+#[cfg(all(target_family = "unix", feature = "acl"))]
 fn stat_flag_prints_posix_acls_if_present() {
     use exacl::{AclEntry, Perm, setfacl};
     let dir = tempdir().unwrap();

@@ -354,7 +354,7 @@ jobs:
           cross build \
             --release \
             --target ${{ matrix.target }} \
-            --all-features \
+            --no-default-features --features clipboard \
             --config profile.release.lto=true \
             --config profile.release.codegen-units=1 \
             --config profile.release.panic='"abort"'
