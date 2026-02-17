@@ -185,7 +185,7 @@ install-cross:
 cross-build:
 	@if [ -z "$(TARGET)" ]; then echo "TARGET environment variable is not set"; exit 1; fi
 	@echo "Cross-compiling for target $(TARGET)..."
-	@cross build --release --target $(TARGET) --all-features
+	@cross build --release --target $(TARGET) --no-default-features --features clipboard
 
 # ==============================================================================
 # Utility targets
