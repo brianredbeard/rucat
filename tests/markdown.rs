@@ -14,16 +14,23 @@
 // along with rucat.  If not, see <https://www.gnu.org/licenses/>.
 //
 // Copyright (C) 2024 Brian 'redbeard' Harrington
+use rucat::binary_display::{BinaryFormatOptions, BinaryOutputFormat};
 use rucat::formatters::{Formatter, markdown::Markdown};
 use std::path::Path;
 
 #[test]
 fn md_basic() {
     let mut buf = Vec::new();
-    let fmt = Markdown {
+    let mut fmt = Markdown {
         line_numbers: false,
     }; // instantiate struct
-    fmt.write(Path::new("foo.rs"), "fn main(){}", &mut buf)
+    let options = BinaryFormatOptions {
+        show_binary: false,
+        format: BinaryOutputFormat::default(),
+        hex_width: 16,
+        base64_width: 76,
+    };
+    fmt.write(Path::new("foo.rs"), "fn main(){}", None, &options, &mut buf)
         .unwrap();
     let out = String::from_utf8(buf).unwrap();
     assert!(out.contains("```rs"));

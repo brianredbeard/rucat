@@ -86,13 +86,13 @@ security-audit-ci:
 	@echo "Running cargo audit for security vulnerabilities (CI mode)..."
 	@# Generate JSON report, then run again to show human-readable output and issue a warning
 	@# The part with || true ensures the step doesn't fail if vulnerabilities are found
-	@$(CARGO) audit --json --format json > audit-report.json || true
+	@mkdir -p target/reports && $(CARGO) audit --json > target/reports/audit-report.json || true
 	@$(CARGO) audit || echo "::warning::Security vulnerabilities found"
 
 deny-ci:
 	@echo "Checking for crate policy violations (CI mode)..."
 	@if [ ! -f deny.toml ]; then $(CARGO) deny init; fi
-	@$(CARGO) deny --format json check > deny-report.json || true
+	@mkdir -p target/reports && $(CARGO) deny --format json check > target/reports/deny-report.json || true
 	@$(CARGO) deny check || echo "::warning::Policy violations found"
 
 security-audit:
@@ -133,16 +133,16 @@ SNAPSHOT_DIR := tests/snapshots
 functional-test: release
 	@echo "Running functional tests..."
 	@echo "  Testing ascii format..."
-	@$(RUCAT_BIN) -f ascii --strip 1 src/lib.rs | diff -u $(SNAPSHOT_DIR)/lib.rs.ascii.snapshot -
+	@$(RUCAT_BIN) src/lib.rs --strip 1 -f ascii | diff -u $(SNAPSHOT_DIR)/lib.rs.ascii.snapshot -
 	@echo "  Testing markdown format..."
-	@$(RUCAT_BIN) -f markdown --strip 1 src/lib.rs | diff -u $(SNAPSHOT_DIR)/lib.rs.md.snapshot -
+	@$(RUCAT_BIN) src/lib.rs --strip 1 -f markdown | diff -u $(SNAPSHOT_DIR)/lib.rs.md.snapshot -
 	@echo "Functional tests passed."
 
 update-snapshots: release
 	@echo "Updating functional test snapshots..."
 	@mkdir -p $(SNAPSHOT_DIR)
-	@$(RUCAT_BIN) -f ascii --strip 1 src/lib.rs > $(SNAPSHOT_DIR)/lib.rs.ascii.snapshot
-	@$(RUCAT_BIN) -f markdown --strip 1 src/lib.rs > $(SNAPSHOT_DIR)/lib.rs.md.snapshot
+	@$(RUCAT_BIN) src/lib.rs --strip 1 -f ascii > $(SNAPSHOT_DIR)/lib.rs.ascii.snapshot
+	@$(RUCAT_BIN) src/lib.rs --strip 1 -f markdown > $(SNAPSHOT_DIR)/lib.rs.md.snapshot
 	@echo "Snapshots updated."
 
 

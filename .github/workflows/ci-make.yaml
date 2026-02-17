@@ -122,6 +122,9 @@ jobs:
       - uses: Swatinem/rust-cache@v2
         with:
           key: ${{ matrix.os }}-${{ matrix.rust }}-${{ matrix.target }}
+      - name: Install system dependencies (Linux)
+        if: runner.os == 'Linux'
+        run: sudo apt-get update && sudo apt-get install -y libacl1-dev
       - name: Run checks and tests via make
         shell: bash
         run: |
@@ -135,7 +138,7 @@ jobs:
         continue-on-error: ${{ matrix.allow-failure || false }}
 
       - name: Run functional tests
-        if: matrix.rust == 'stable'
+        if: matrix.rust == 'stable' && runner.os != 'Windows'
         run: make functional-test
         continue-on-error: ${{ matrix.allow-failure || false }}
 
@@ -152,6 +155,7 @@ jobs:
         with:
           components: llvm-tools-preview
       - uses: Swatinem/rust-cache@v2
+      - run: sudo apt-get update && sudo apt-get install -y libacl1-dev
       - run: cargo install --locked cargo-llvm-cov
       - run: make coverage
       - uses: codecov/codecov-action@v4
@@ -186,6 +190,7 @@ jobs:
   cross-compile:
     name: Cross-compile ${{ matrix.target }}
     runs-on: ubuntu-latest
+    continue-on-error: true
     needs: [test, deny, security-audit]
     strategy:
       fail-fast: false

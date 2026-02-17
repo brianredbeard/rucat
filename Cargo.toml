@@ -36,15 +36,25 @@ name = "generate-assets"
 path = "src/bin/generate-assets.rs"
 required-features = ["generate-assets"]
 
+[[bin]]
+name = "generate-fixture"
+path = "src/bin/generate-fixture.rs"
+required-features = ["generate-fixture"]
+
+[[test]]
+name = "cli_config"
+path = "tests/cli_config.rs"
+
 # See more keys and their definitions at
 # https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [features]
-default = []
-clipboard = []
+default = ["clipboard"]
+clipboard = ["dep:arboard"]
 basic = []
 full = []
 generate-assets = ["clap_complete", "clap_mangen"]
+generate-fixture = []
 
 [dependencies]
 clap = { version = "4.5", features = ["derive"] }
@@ -58,11 +68,30 @@ syntect = { version = "5.2.0", features = ["default-fancy"] }
 base64 = "0.22"
 clap_complete = { version = "4.5", optional = true }
 clap_mangen = { version = "0.2.29", optional = true }
+arboard = { version = "3", optional = true }
+
+[target.'cfg(unix)'.dependencies]
+# For extended attributes on Unix platforms
+xattr = "1.0"
+exacl = { version = "0.12.0", features = ["serde"] }
+
+[target.'cfg(target_os = "linux")'.dependencies]
+
+[target.'cfg(windows)'.dependencies]
+windows-sys = { version = "0.52", features = [
+    "Win32_Foundation",
+    "Win32_Storage_FileSystem",
+    "Win32_Security",
+    "Win32_Security_Authorization",
+]}
 
 [dependencies.dirs]
 version = "6.0"
 [dependencies.toml]
 version = "0.9"
+[dependencies.time]
+version = "0.3"
+features = ["local-offset", "formatting", "std"]
 [dev-dependencies]
 assert_cmd = "2"         # spawn compiled binary
 predicates = { version = "3", features = ["diff"] }

@@ -95,10 +95,58 @@ mod clipboard_tests {
             .stderr(predicate::str::contains("Invalid test provider"));
     }
 
+    #[test]
+    #[cfg(all(unix, feature = "clipboard"))]
+    fn auto_detect_tmux_selects_osc52() {
+        let dir = tempdir().unwrap();
+        let file = prepare_file(dir.path(), "a.txt", "hello tmux");
+        let expected_output = format!(
+            "---\nFile: {}\n---\n```txt\nhello tmux\n```\n",
+            file.display()
+        );
+        let b64_content = general_purpose::STANDARD.encode(&expected_output);
+        let expected_osc52 = format!("\x1b]52;c;{b64_content}\x07");
+
+        Command::cargo_bin("rucat")
+            .unwrap()
+            .env("TMUX", "1") // Simulate being inside tmux
+            .env_remove("DISPLAY") // Ensure no desktop env
+            .env_remove("WAYLAND_DISPLAY")
+            .arg("--copy")
+            .arg(&file)
+            .assert()
+            .success()
+            .stdout(predicate::str::contains(&expected_osc52));
+    }
+
+    #[test]
+    #[cfg(all(unix, feature = "clipboard"))]
+    fn auto_detect_kitty_selects_osc5522() {
+        let dir = tempdir().unwrap();
+        let file = prepare_file(dir.path(), "a.txt", "hello kitty");
+        let expected_output = format!(
+            "---\nFile: {}\n---\n```txt\nhello kitty\n```\n",
+            file.display()
+        );
+        let b64_content = general_purpose::STANDARD.encode(&expected_output);
+        let expected_osc5522 = format!("\x1b]5522;{b64_content}\x07");
+
+        Command::cargo_bin("rucat")
+            .unwrap()
+            .env("TERM", "xterm-kitty") // Simulate being in kitty
+            .env_remove("DISPLAY")
+            .env_remove("WAYLAND_DISPLAY")
+            .arg("--copy")
+            .arg(&file)
+            .assert()
+            .success()
+            .stdout(predicate::str::contains(&expected_osc5522));
+    }
+
     // This test is platform-specific. It tests the auto-detection failure case, which
     // can only be reliably triggered in a headless Linux environment.
     #[test]
-    #[cfg(target_os = "linux")]
+    #[cfg(all(unix, not(target_os = "macos"), feature = "clipboard"))]
     fn auto_detection_fails_gracefully_on_headless_linux() {
         let dir = tempdir().unwrap();
         let file = prepare_file(dir.path(), "a.txt", "no clipboard");
@@ -107,10 +155,65 @@ mod clipboard_tests {
             .env_remove("DISPLAY")
             .env_remove("WAYLAND_DISPLAY")
             .env_remove("TERM")
+            .env_remove("TERM_PROGRAM")
+            .env_remove("SSH_CLIENT")
+            .env_remove("TMUX")
             .arg("--copy")
             .arg(&file)
             .assert()
             .failure()
-            .stderr(predicate::str::contains("Failed to initialize clipboard"));
+            .stderr(predicate::str::contains(
+                "no suitable provider found for your environment",
+            ));
+    }
+
+    // This test simulates a Linux desktop environment on a headless CI runner.
+    // It verifies that the `Native` provider is correctly selected. The test
+    // expects a failure, but specifically a failure from the native clipboard
+    // library (`arboard`), which proves the auto-detection logic worked.
+    #[test]
+    #[cfg(all(unix, not(target_os = "macos"), feature = "clipboard"))]
+    fn auto_detect_selects_native_on_desktop() {
+        let dir = tempdir().unwrap();
+        let file = prepare_file(dir.path(), "a.txt", "desktop test");
+        Command::cargo_bin("rucat")
+            .unwrap()
+            .env("DISPLAY", ":0") // Simulate a desktop environment
+            .env_remove("TERM")
+            .env_remove("SSH_CLIENT")
+            .env_remove("TMUX")
+            .arg("--copy")
+            .arg(&file)
+            .assert()
+            .failure()
+            .stderr(predicate::str::contains(
+                "Failed to initialize native clipboard",
+            ));
+    }
+
+    #[test]
+    #[cfg(all(unix, feature = "clipboard"))]
+    fn auto_detect_term_program_selects_osc52() {
+        let dir = tempdir().unwrap();
+        let file = prepare_file(dir.path(), "a.txt", "hello vscode");
+        let expected_output = format!(
+            "---\nFile: {}\n---\n```txt\nhello vscode\n```\n",
+            file.display()
+        );
+        let b64_content = general_purpose::STANDARD.encode(&expected_output);
+        let expected_osc52 = format!("\x1b]52;c;{b64_content}\x07");
+
+        Command::cargo_bin("rucat")
+            .unwrap()
+            .env("TERM_PROGRAM", "vscode") // Simulate being inside VSCode's terminal
+            .env_remove("DISPLAY")
+            .env_remove("WAYLAND_DISPLAY")
+            .env_remove("SSH_CLIENT")
+            .env_remove("TMUX")
+            .arg("--copy")
+            .arg(&file)
+            .assert()
+            .success()
+            .stdout(predicate::str::contains(&expected_osc52));
     }
 }

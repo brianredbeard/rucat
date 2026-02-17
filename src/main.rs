@@ -15,25 +15,26 @@
 // along with rucat.  If not, see <https://www.gnu.org/licenses/>.
 //
 // Copyright (C) 2024 Brian 'redbeard' Harrington
+use clap::Parser;
+use rucat::binary_display::{BinaryDataFormatter, BinaryFormatOptions, BinaryOutputFormat};
 use rucat::cli::{Args, OutputFormat};
 #[cfg(feature = "clipboard")]
 use rucat::clipboard::ClipboardProvider;
+use rucat::metadata::FileMetadata;
 use serde::Deserialize;
-use std::fs;
+use std::fs::{self, File};
 use std::io::{self, Read, Write};
 #[cfg(unix)]
 use std::os::unix::ffi::OsStrExt;
 use std::path::{Path, PathBuf};
 use walkdir::WalkDir;
 
-#[derive(Deserialize, Default)]
-struct Config {
-    format: Option<OutputFormat>,
-    numbers: Option<bool>,
-    strip: Option<usize>,
-    ansi_width: Option<usize>,
-    utf8_width: Option<usize>,
-    pretty_syntax: Option<String>,
+const BINARY_PREVIEW_SIZE: usize = 160; // 10 lines of 16 bytes
+
+/// Represents the content of a file, which can be either text or a binary preview.
+enum FileContent {
+    Text(String),
+    Binary(Vec<u8>),
 }
 
 struct FormattingOptions<'a> {
@@ -43,82 +44,71 @@ struct FormattingOptions<'a> {
     pretty_syntax: Option<&'a str>,
     ansi_width: usize,
     utf8_width: usize,
+    stat: bool,
+    binary_options: BinaryFormatOptions,
+}
+
+#[derive(Deserialize, Default)]
+struct Config {
+    format: Option<OutputFormat>,
+    numbers: Option<bool>,
+    strip: Option<usize>,
+    ansi_width: Option<usize>,
+    utf8_width: Option<usize>,
+    pretty_syntax: Option<String>,
+    stat: Option<bool>,
+    show_binary_xattrs: Option<bool>,
+    binary_format: Option<BinaryOutputFormat>,
+    hex_width: Option<usize>,
+    base64_width: Option<usize>,
 }
 
 fn load_config() -> Config {
-    if let Some(mut path) = dirs::config_dir() {
-        path.push("rucat");
-        path.push("config.toml");
-        if path.exists() {
-            let content = fs::read_to_string(path).unwrap_or_default();
-            return toml::from_str(&content).unwrap_or_default();
-        }
+    let config_path = if let Ok(xdg_config_home) = std::env::var("XDG_CONFIG_HOME") {
+        let mut path = PathBuf::from(xdg_config_home);
+        path.push("rucat/config.toml");
+        path
+    } else if let Some(mut path) = dirs::config_dir() {
+        path.push("rucat/config.toml");
+        path
+    } else {
+        return Config::default();
+    };
+    if config_path.exists() {
+        let content = fs::read_to_string(config_path).unwrap_or_default();
+        return toml::from_str(&content).unwrap_or_default();
     }
     Config::default()
 }
 
-// Struct for JSON output
-#[derive(serde::Serialize)]
-struct FileEntry {
-    path: String,
-    content: String,
-}
-
-fn process_stdin(
-    options: &FormattingOptions,
-    #[cfg(feature = "clipboard")] clipboard_buffer: &mut Option<Vec<u8>>,
-) -> anyhow::Result<()> {
+fn process_stdin(options: &FormattingOptions, writer: &mut dyn Write) -> anyhow::Result<()> {
     let mut buf = String::new();
     io::stdin().read_to_string(&mut buf)?;
     let pseudo = PathBuf::from("-");
 
-    let fmt = options.format.into_formatter(
-        options.ansi_width,
-        options.utf8_width,
-        options.line_numbers,
-        options.pretty_syntax,
-    );
+    let mut fmt = options
+        .format
+        .into_formatter(
+            options.ansi_width,
+            options.utf8_width,
+            options.line_numbers,
+            options.pretty_syntax,
+        )
+        .unwrap(); // Safe; all formats now return Some
 
-    if let Some(ref f) = fmt {
-        let disp = strip_components(&pseudo, options.strip);
+    let disp = strip_components(&pseudo, options.strip);
 
-        #[cfg(feature = "clipboard")]
-        if let Some(cb) = clipboard_buffer {
-            f.write(&disp, &buf, cb)?;
-            f.write(&disp, &buf, &mut io::stdout())?;
-        } else {
-            f.write(&disp, &buf, &mut io::stdout())?;
-        }
+    fmt.start(writer)?;
+    fmt.write(&disp, &buf, None, &options.binary_options, writer)?;
+    fmt.finish(writer)?;
 
-        #[cfg(not(feature = "clipboard"))]
-        f.write(&disp, &buf, &mut io::stdout())?;
-    } else {
-        let mut file_entries = Vec::new();
-        let disp = strip_components(&pseudo, options.strip);
-        file_entries.push(FileEntry {
-            path: disp.display().to_string(),
-            content: buf,
-        });
-
-        #[cfg(feature = "clipboard")]
-        if let Some(cb) = clipboard_buffer {
-            let json_output = serde_json::to_string_pretty(&file_entries)?;
-            write!(cb, "{json_output}")?;
-            writeln!(io::stdout(), "{json_output}")?;
-        } else {
-            format_json(&file_entries)?;
-        }
-
-        #[cfg(not(feature = "clipboard"))]
-        format_json(&file_entries)?;
-    }
     Ok(())
 }
 
 fn process_files(
     files: &[PathBuf],
     options: &FormattingOptions,
-    #[cfg(feature = "clipboard")] clipboard_buffer: &mut Option<Vec<u8>>,
+    writer: &mut dyn Write,
 ) -> anyhow::Result<()> {
     // Expand directories to individual files
     let mut paths = Vec::<PathBuf>::new();
@@ -137,91 +127,105 @@ fn process_files(
         }
     }
 
-    let fmt = options.format.into_formatter(
-        options.ansi_width,
-        options.utf8_width,
-        options.line_numbers,
-        options.pretty_syntax,
-    );
+    // Safe to unwrap because all formats now return a formatter
+    let mut fmt = options
+        .format
+        .into_formatter(
+            options.ansi_width,
+            options.utf8_width,
+            options.line_numbers,
+            options.pretty_syntax,
+        )
+        .unwrap();
 
-    if options.format == OutputFormat::Json {
-        let entries: Vec<FileEntry> = paths
-            .iter()
-            .filter_map(|p| read_file_content(p).ok().map(|c| (p, c)))
-            .map(|(p, content)| {
-                let display_path = strip_components(p, options.strip);
-                FileEntry {
-                    path: display_path.display().to_string(),
-                    content,
-                }
-            })
-            .collect();
+    fmt.start(writer)?;
 
-        #[cfg(feature = "clipboard")]
-        if let Some(cb) = clipboard_buffer {
-            let json_output = serde_json::to_string_pretty(&entries)?;
-            write!(cb, "{json_output}")?;
-            writeln!(io::stdout(), "{json_output}")?;
-        } else {
-            format_json(&entries)?;
+    for p in &paths {
+        // A single "-" is a convention for stdin
+        if p.to_string_lossy() == "-" {
+            let mut stdin_buf = String::new();
+            io::stdin().read_to_string(&mut stdin_buf)?;
+            fmt.write(
+                Path::new("-"),
+                &stdin_buf,
+                None, // No metadata for stdin
+                &options.binary_options,
+                writer,
+            )?;
+            continue; // Move to the next path
         }
+        match read_file_content(p) {
+            Ok(file_content) => {
+                let metadata = if options.stat {
+                    FileMetadata::extract(p)
+                        .map_err(|e| {
+                            eprintln!(
+                                "Warning: Could not extract metadata for {}: {e}",
+                                p.display()
+                            );
+                        })
+                        .ok()
+                } else {
+                    None
+                };
 
-        #[cfg(not(feature = "clipboard"))]
-        format_json(&entries)?;
-    } else {
-        for p in paths {
-            let result = read_file_content(&p);
-            match result {
-                Ok(content) => {
-                    let display_path = strip_components(&p, options.strip);
-                    if let Some(ref f) = fmt {
-                        #[cfg(feature = "clipboard")]
-                        if let Some(cb) = clipboard_buffer {
-                            f.write(&display_path, &content, cb)?;
-                            f.write(&display_path, &content, &mut io::stdout())?;
-                        } else {
-                            f.write(&display_path, &content, &mut io::stdout())?;
-                        }
-
-                        #[cfg(not(feature = "clipboard"))]
-                        f.write(&display_path, &content, &mut io::stdout())?;
+                let display_path = strip_components(p, options.strip);
+                let content_to_format = match file_content {
+                    FileContent::Text(text) => text,
+                    FileContent::Binary(bytes) => {
+                        // For binary files, we create a hex dump preview.
+                        // The name/header for the hexdump is not needed here, as the
+                        // main formatter (e.g., Markdown) provides the file header.
+                        let formatter = BinaryDataFormatter::new(&bytes, "");
+                        formatter.format(
+                            options.binary_options.format,
+                            options.binary_options.hex_width,
+                            options.binary_options.base64_width,
+                        )
                     }
-                }
-                Err(e) => writeln!(io::stderr(), "Error reading {}: {}", p.display(), e)?,
+                };
+                fmt.write(
+                    &display_path,
+                    &content_to_format,
+                    metadata.as_ref(),
+                    &options.binary_options,
+                    writer,
+                )?;
             }
+            Err(e) => writeln!(io::stderr(), "Error reading {}: {}", p.display(), e)?,
         }
     }
+
+    fmt.finish(writer)?;
     Ok(())
 }
 
 fn main() -> anyhow::Result<()> {
-    let mut args = match Args::parse_with_trailing() {
-        Ok(args) => args,
-        Err(e) => {
-            eprintln!("Error: {e}");
-            std::process::exit(1);
-        }
-    };
+    let mut args = Args::parse();
     let config = load_config();
 
     // Handle clipboard provider if copy flag is set
     #[cfg(feature = "clipboard")]
     let clipboard_provider = if args.copy {
-        args.clipboard_provider_for_test.as_ref().map_or_else(
-            || {
-                // Auto-detection would go here, but for tests we'll fail if no provider specified
-                eprintln!("Error: Failed to initialize clipboard");
-                std::process::exit(1);
-            },
-            |provider_name| match provider_name.as_str() {
+        let provider = args.clipboard_provider_for_test.as_deref().map_or_else(
+            ClipboardProvider::auto_detect,
+            |provider_name| match provider_name {
                 "osc52" => Some(ClipboardProvider::Osc52),
                 "osc5522" => Some(ClipboardProvider::Osc5522),
+                "native" => Some(ClipboardProvider::Native),
                 _ => {
                     eprintln!("Error: Invalid test provider '{provider_name}'");
                     std::process::exit(1);
                 }
             },
-        )
+        );
+        if provider.is_none() {
+            eprintln!(
+                "Error: Failed to initialize clipboard: no suitable provider found for your environment."
+            );
+            std::process::exit(1);
+        }
+        provider
     } else {
         None
     };
@@ -236,6 +240,25 @@ fn main() -> anyhow::Result<()> {
     let ansi_width = args.ansi_width.or(config.ansi_width).unwrap_or(80);
     let utf8_width = args.utf8_width.or(config.utf8_width).unwrap_or(80);
     let pretty_syntax = args.pretty_syntax.or(config.pretty_syntax);
+    let stat = args.stat || config.stat.unwrap_or(false);
+    let show_binary = args.show_binary_xattrs || config.show_binary_xattrs.unwrap_or(false);
+    let binary_format = args
+        .binary_format
+        .or(config.binary_format)
+        .unwrap_or_default();
+    let hex_width = args.hex_width.or(config.hex_width).unwrap_or(16).max(1);
+    let base64_width = args
+        .base64_width
+        .or(config.base64_width)
+        .unwrap_or(76)
+        .max(1);
+
+    let binary_options = BinaryFormatOptions {
+        show_binary,
+        format: binary_format,
+        hex_width,
+        base64_width,
+    };
 
     let formatting_options = FormattingOptions {
         format,
@@ -244,6 +267,8 @@ fn main() -> anyhow::Result<()> {
         pretty_syntax: pretty_syntax.as_deref(),
         ansi_width,
         utf8_width,
+        stat,
+        binary_options,
     };
 
     // If the user passed -0/--null, pull a NUL-separated list of paths from stdin
@@ -262,45 +287,64 @@ fn main() -> anyhow::Result<()> {
         }
     }
 
-    // Collect all output in a buffer if copying to clipboard
+    // If copying to clipboard, buffer all output first. Otherwise, write directly to stdout.
     #[cfg(feature = "clipboard")]
-    let mut clipboard_buffer = if args.copy { Some(Vec::new()) } else { None };
+    if let Some(provider) = clipboard_provider {
+        let mut buffer = Vec::new();
+        if args.files.is_empty() && !args.null_sep {
+            process_stdin(&formatting_options, &mut buffer)?;
+        } else {
+            process_files(&args.files, &formatting_options, &mut buffer)?;
+        }
 
-    // Process input
-    if args.files.is_empty() && !args.null_sep {
-        process_stdin(
-            &formatting_options,
-            #[cfg(feature = "clipboard")]
-            &mut clipboard_buffer,
-        )?;
-    } else {
-        process_files(
-            &args.files,
-            &formatting_options,
-            #[cfg(feature = "clipboard")]
-            &mut clipboard_buffer,
-        )?;
-    }
+        // Write buffer to stdout
+        io::stdout().write_all(&buffer)?;
 
-    // Write clipboard escape sequence if needed
-    #[cfg(feature = "clipboard")]
-    if let Some(buffer) = clipboard_buffer
-        && let Some(provider) = clipboard_provider
-    {
+        // Pass buffer to clipboard provider
         let content = String::from_utf8_lossy(&buffer);
         provider.copy_to_clipboard(&content, &mut io::stdout())?;
+    } else {
+        // Not using clipboard, write directly to stdout
+        let mut stdout = io::stdout();
+        if args.files.is_empty() && !args.null_sep {
+            process_stdin(&formatting_options, &mut stdout)?;
+        } else {
+            process_files(&args.files, &formatting_options, &mut stdout)?;
+        }
+    }
+
+    #[cfg(not(feature = "clipboard"))]
+    {
+        let mut stdout = io::stdout();
+        if args.files.is_empty() && !args.null_sep {
+            process_stdin(&formatting_options, &mut stdout)?;
+        } else {
+            process_files(&args.files, &formatting_options, &mut stdout)?;
+        }
     }
 
     Ok(())
 }
 
-fn read_file_content(p: &PathBuf) -> anyhow::Result<String> {
-    std::fs::read_to_string(p).map_err(anyhow::Error::from)
-}
+fn read_file_content(p: &PathBuf) -> anyhow::Result<FileContent> {
+    // First, try to read as a string. This is fast and handles the common case.
+    match std::fs::read_to_string(p) {
+        Ok(content) => Ok(FileContent::Text(content)),
+        Err(e) if e.kind() == std::io::ErrorKind::InvalidData => {
+            // If it's not valid UTF-8, it's a binary file.
+            // Read a small preview instead of the whole file.
+            let file = File::open(p)?;
+            let mut buffer = Vec::with_capacity(BINARY_PREVIEW_SIZE);
+            file.take(BINARY_PREVIEW_SIZE as u64)
+                .read_to_end(&mut buffer)?;
 
-fn format_json(entries: &[FileEntry]) -> anyhow::Result<()> {
-    writeln!(io::stdout(), "{}", serde_json::to_string_pretty(entries)?)?;
-    Ok(())
+            Ok(FileContent::Binary(buffer))
+        }
+        Err(e) => {
+            // For other errors (e.g., permission denied), propagate them.
+            Err(e.into())
+        }
+    }
 }
 
 fn strip_components(p: &Path, n: usize) -> PathBuf {

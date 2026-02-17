@@ -30,6 +30,16 @@ fn prepare_file(dir: &std::path::Path, name: &str, body: &str) -> std::path::Pat
     p
 }
 
+fn prepare_binary_file(dir: &std::path::Path, name: &str, body: &[u8]) -> std::path::PathBuf {
+    let p = dir.join(name);
+    if let Some(parent) = p.parent() {
+        std::fs::create_dir_all(parent).unwrap();
+    }
+    let mut f = File::create(&p).unwrap();
+    f.write_all(body).unwrap();
+    p
+}
+
 #[test]
 fn cli_ascii_numbers() {
     let dir = tempdir().unwrap();
@@ -275,4 +285,205 @@ fn cli_pretty_config_is_overridden_by_flag() {
         out_sh_from_flag, out_toml_from_config,
         "Highlighting from CLI flag should override config file"
     );
+}
+
+#[test]
+fn cli_empty_file_is_handled_gracefully() {
+    let dir = tempdir().unwrap();
+    let file = prepare_file(dir.path(), "empty.txt", "");
+
+    // Markdown should produce a header and an empty code block
+    Command::cargo_bin("rucat")
+        .unwrap()
+        .arg("-f")
+        .arg("markdown")
+        .arg(&file)
+        .assert()
+        .success()
+        .stdout(
+            predicate::str::contains("File: ")
+                .and(predicate::str::contains("empty.txt"))
+                // It might be ```txt or ``` depending on extension detection
+                .and(predicate::str::contains("```").and(predicate::str::contains("\n```\n"))),
+        );
+
+    // Ansi should produce a header and an empty body box
+    Command::cargo_bin("rucat")
+        .unwrap()
+        .arg("-f")
+        .arg("ansi")
+        .arg(&file)
+        .assert()
+        .success()
+        .stdout(
+            predicate::str::contains("File: ")
+                .and(predicate::str::contains("empty.txt"))
+                .and(predicate::str::contains('┌'))
+                .and(predicate::str::contains('└')),
+        );
+}
+
+#[test]
+fn cli_binary_content_prints_error_and_continues() {
+    let dir = tempdir().unwrap();
+    let binary_file = prepare_binary_file(dir.path(), "binary.dat", b"\x80\x90\xA0"); // Invalid UTF-8
+    let text_file = prepare_file(dir.path(), "text.txt", "hello");
+
+    Command::cargo_bin("rucat")
+        .unwrap()
+        .arg(&binary_file)
+        .arg(&text_file)
+        .assert()
+        .success() // Should not fail on bad file
+        .stdout(
+            // The binary file should now produce a hexdump, not an error to stderr
+            predicate::str::contains("80 90 a0").and(
+                predicate::str::contains("File: ").and(predicate::str::contains("text.txt")), // Check that the second file was processed
+            ),
+        );
+}
+
+#[test]
+fn json_from_stdin() {
+    Command::cargo_bin("rucat")
+        .unwrap()
+        .args(["-f", "json"])
+        .write_stdin("{\"key\": \"value\"}")
+        .assert()
+        .success()
+        .stdout(
+            predicate::str::contains(r#""path": "-""#).and(predicate::str::contains(
+                r#""content": "{\"key\": \"value\"}""#,
+            )),
+        );
+}
+
+#[test]
+fn json_ignores_line_numbers() {
+    let dir = tempdir().unwrap();
+    let file = prepare_file(dir.path(), "a.txt", "hello");
+
+    Command::cargo_bin("rucat")
+        .unwrap()
+        .args(["-f", "json", "-n"]) // -n should be ignored
+        .arg(&file)
+        .assert()
+        .success()
+        .stdout(predicate::str::contains(r#""content": "hello""#).and(
+            predicate::str::contains("1 |").not(), // No line numbers
+        ));
+}
+
+#[test]
+fn strip_more_components_than_exist() {
+    let dir = tempdir().unwrap();
+    let file = prepare_file(dir.path(), "a/b/c.txt", "data");
+
+    Command::cargo_bin("rucat")
+        .unwrap()
+        .args(["--strip", "99", "-f", "ascii"])
+        .arg(&file)
+        .assert()
+        .success()
+        // Should strip down to just the filename
+        .stdout(predicate::str::contains("=== c.txt ==="));
+}
+
+#[test]
+fn strip_has_no_effect_on_stdin() {
+    Command::cargo_bin("rucat")
+        .unwrap()
+        .args(["--strip", "5", "-f", "ascii"])
+        .write_stdin("hello")
+        .assert()
+        .success()
+        // The path for stdin is always "-", which should be unaffected by stripping
+        .stdout(predicate::str::contains("=== - ==="));
+}
+
+#[test]
+fn empty_stdin() {
+    Command::cargo_bin("rucat")
+        .unwrap()
+        .args(["-f", "markdown"])
+        .write_stdin("")
+        .assert()
+        .success()
+        // Should still print a well-formed block for stdin
+        .stdout(predicate::str::contains("File: -\n---\n```\n```\n"));
+}
+
+#[test]
+fn markdown_formatter_ignores_modeline() {
+    let dir = tempdir().unwrap();
+    // A .txt file with a rust modeline. Markdown should use the extension, not the modeline.
+    let file = prepare_file(dir.path(), "a.txt", "fn main() {}\n// vim: ft=rust");
+
+    Command::cargo_bin("rucat")
+        .unwrap()
+        .args(["-f", "markdown"])
+        .arg(&file)
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("```txt")) // Should be txt from extension
+        .stdout(predicate::str::contains("```rust").not()); // Should NOT be rust from modeline
+}
+
+#[test]
+fn single_dash_is_treated_as_stdin() {
+    let dir = tempdir().unwrap();
+    let file1 = prepare_file(dir.path(), "a.txt", "file one");
+    let file2 = prepare_file(dir.path(), "c.txt", "file two");
+
+    // Test with `-` interspersed with other files
+    Command::cargo_bin("rucat")
+        .unwrap()
+        .args([
+            "-f",
+            "ascii",
+            &file1.to_string_lossy(),
+            "-",
+            &file2.to_string_lossy(),
+        ])
+        .write_stdin("stdin content")
+        .assert()
+        .success()
+        .stdout(
+            predicate::str::contains("a.txt ===\nfile one")
+                .and(predicate::str::contains("=== - ===\nstdin content"))
+                .and(predicate::str::contains("c.txt ===\nfile two")),
+        );
+}
+
+#[test]
+#[cfg(unix)]
+fn non_utf8_filename_is_handled_gracefully() {
+    use std::ffi::OsStr;
+    use std::os::unix::ffi::OsStrExt;
+
+    let dir = tempdir().unwrap();
+    // Create a filename with an invalid UTF-8 byte sequence (0xff)
+    let invalid_bytes = b"invalid-\xff-name.txt";
+    let invalid_os_str = OsStr::from_bytes(invalid_bytes);
+    let file_path = dir.path().join(invalid_os_str);
+
+    // We don't need `prepare_file` because we are constructing the path directly
+    let mut f = match File::create(&file_path) {
+        Ok(file) => file,
+        Err(e) => {
+            println!(
+                "Skipping non-UTF8 filename test: could not create file (likely an OS restriction): {e}"
+            );
+            return;
+        }
+    };
+    write!(f, "content").unwrap();
+
+    Command::cargo_bin("rucat")
+        .unwrap()
+        .arg(&file_path)
+        .assert()
+        .success()
+        // The invalid byte should be replaced with the Unicode replacement character
+        .stdout(predicate::str::contains("invalid-�-name.txt"));
 }

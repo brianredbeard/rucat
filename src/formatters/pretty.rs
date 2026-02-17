@@ -15,6 +15,7 @@
 //
 // Copyright (C) 2024 Brian 'redbeard' Harrington
 use super::Formatter;
+use crate::metadata::FileMetadata;
 use regex::Regex;
 use std::io::{self, Write};
 use std::path::Path;
@@ -64,7 +65,20 @@ static SYNTAX_SET: LazyLock<SyntaxSet> = LazyLock::new(SyntaxSet::load_defaults_
 static THEME_SET: LazyLock<ThemeSet> = LazyLock::new(ThemeSet::load_defaults);
 
 impl Formatter for Pretty {
-    fn write(&self, path: &Path, content: &str, w: &mut dyn Write) -> io::Result<()> {
+    fn write(
+        &mut self,
+        path: &Path,
+        content: &str,
+        metadata: Option<&FileMetadata>,
+        options: &crate::binary_display::BinaryFormatOptions,
+        w: &mut dyn Write,
+    ) -> io::Result<()> {
+        if let Some(meta) = metadata {
+            let formatted_meta = meta.format_for_display(options);
+            writeln!(w, "{formatted_meta}")?;
+        } else {
+            writeln!(w, "File: {}", path.display())?;
+        }
         let syntax =
             // 1. Check for --pretty-syntax flag override.
             self.syntax_override

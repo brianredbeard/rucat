@@ -15,6 +15,7 @@
 //
 // Copyright (C) 2024 Brian 'redbeard' Harrington
 use super::Formatter;
+use crate::metadata::FileMetadata;
 use std::io::{self, Write};
 use std::path::Path;
 
@@ -30,10 +31,34 @@ fn esc(s: &str) -> String {
         .replace('\'', "&apos;")
 }
 
+fn sanitize_xml_comment(s: &str) -> String {
+    // XML spec prohibits -- in comments. Replace with - - (space inserted).
+    // This also prevents --> breakout since it contains --.
+    // For multiple consecutive hyphens like ---, apply repeatedly until stable.
+    let mut result = s.to_string();
+    while result.contains("--") {
+        result = result.replace("--", "- -");
+    }
+    result
+}
+
 impl Formatter for Xml {
-    fn write(&self, path: &Path, content: &str, w: &mut dyn Write) -> io::Result<()> {
+    fn write(
+        &mut self,
+        path: &Path,
+        content: &str,
+        metadata: Option<&FileMetadata>,
+        options: &crate::binary_display::BinaryFormatOptions,
+        w: &mut dyn Write,
+    ) -> io::Result<()> {
+        if let Some(meta) = metadata {
+            let formatted_meta = meta.format_for_display(options);
+            let sanitized_meta = sanitize_xml_comment(&formatted_meta);
+            writeln!(w, "<!--\n{sanitized_meta}-->")?;
+        }
+
         if self.line_numbers {
-            writeln!(w, "<file path=\"{}\">", path.display())?;
+            writeln!(w, "<file path=\"{}\">", esc(&path.display().to_string()))?;
             for (idx, line) in content.lines().enumerate() {
                 writeln!(w, "  <line no=\"{}\">{}</line>", idx + 1, esc(line))?;
             }
@@ -42,7 +67,7 @@ impl Formatter for Xml {
             writeln!(
                 w,
                 "<file path=\"{}\">{}</file>",
-                path.display(),
+                esc(&path.display().to_string()),
                 esc(content)
             )?;
         }
